@@ -1,0 +1,36 @@
+# Backend build
+backend/main
+backend/tmp/
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Debug
+debug/
+*.test
+
+# Project docs
+扫描架构-精简版.md
+
+# Coverage
+coverage/
+*.out
