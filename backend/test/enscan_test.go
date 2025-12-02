@@ -162,7 +162,7 @@ func TestENScanQueryICPs(t *testing.T) {
 
 // TestENScanQueryAll 测试查询所有信息
 func TestENScanQueryAll(t *testing.T) {
-	es := scanner.NewENScanScanner()
+	es := enscan.NewENScanScanner()
 	if !es.IsAvailable() {
 		t.Skip("ENScan not available")
 	}
@@ -190,7 +190,7 @@ func TestENScanQueryAll(t *testing.T) {
 
 // TestENScanBatchQuery 测试批量查询
 func TestENScanBatchQuery(t *testing.T) {
-	es := scanner.NewENScanScanner()
+	es := enscan.NewENScanScanner()
 	if !es.IsAvailable() {
 		t.Skip("ENScan not available")
 	}
@@ -203,7 +203,7 @@ func TestENScanBatchQuery(t *testing.T) {
 		"华为",
 	}
 
-	results, err := es.BatchQuery(ctx, companies, &scanner.ENScanQueryOptions{
+	results, err := es.BatchQuery(ctx, companies, &enscan.ENScanQueryOptions{
 		Fields: []string{"icp"},
 		Source: "aqc",
 	})

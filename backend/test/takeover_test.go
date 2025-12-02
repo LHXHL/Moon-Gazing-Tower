@@ -106,7 +106,7 @@ func TestTakeoverScanBatch(t *testing.T) {
 
 // TestCNAMEMatching 测试 CNAME 匹配逻辑
 func TestCNAMEMatching(t *testing.T) {
-	ts := scanner.NewTakeoverScanner(10)
+	ts := subdomain.NewTakeoverScanner(10)
 	fps := ts.GetFingerprints()
 
 	testCases := []struct {
@@ -194,7 +194,7 @@ func equalIgnoreCase(a, b string) bool {
 
 // BenchmarkTakeoverScan 性能测试
 func BenchmarkTakeoverScan(b *testing.B) {
-	ts := scanner.NewTakeoverScanner(10)
+	ts := subdomain.NewTakeoverScanner(10)
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -205,7 +205,7 @@ func BenchmarkTakeoverScan(b *testing.B) {
 
 // BenchmarkTakeoverScanBatch 批量扫描性能测试
 func BenchmarkTakeoverScanBatch(b *testing.B) {
-	ts := scanner.NewTakeoverScanner(20)
+	ts := subdomain.NewTakeoverScanner(20)
 	ctx := context.Background()
 
 	domains := []string{
