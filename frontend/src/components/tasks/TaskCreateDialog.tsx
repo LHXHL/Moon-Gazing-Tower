@@ -1,12 +1,10 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { taskApi, TaskConfig } from '@/api/tasks'
-import { assetApi } from '@/api/assets'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -20,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { Play, Plus, X } from 'lucide-react'
@@ -58,7 +55,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    assetIds: [] as string[],
     config: {
       scanTypes: ['port_scan'],
       port_scan_mode: 'quick',
@@ -72,14 +68,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
   // 直接输入的目标
   const [directTargets, setDirectTargets] = useState<string[]>([])
   const [targetInput, setTargetInput] = useState('')
-  const [targetMode, setTargetMode] = useState<'direct' | 'asset'>('direct')
-
-  // 获取资产列表
-  const { data: assetsData, isLoading: assetsLoading } = useQuery({
-    queryKey: ['assets-for-task'],
-    queryFn: () => assetApi.getAssets({ pageSize: 100 }),
-    enabled: open,
-  })
 
   // 创建任务
   const createMutation = useMutation({
@@ -95,13 +83,10 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
     },
   })
 
-  const assets = assetsData?.data?.list || []
-
   const resetForm = () => {
     setFormData({
       name: '',
       description: '',
-      assetIds: [],
       config: {
         scanTypes: ['port_scan'],
         port_scan_mode: 'quick',
@@ -113,7 +98,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
     })
     setDirectTargets([])
     setTargetInput('')
-    setTargetMode('direct')
   }
 
   // 添加直接输入的目标
@@ -153,38 +137,27 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
       return
     }
     
-    // 根据输入模式验证目标
+    // 验证目标 - 只支持直接输入模式
     let targets: string[] = []
     let targetType: string = 'unknown'
 
-    if (targetMode === 'direct') {
-      // 如果输入框有内容，自动添加到目标列表
-      let finalTargets = [...directTargets]
-      if (targetInput.trim()) {
-        const newTargets = targetInput
-          .split(/[\n,\s]+/)
-          .map(t => t.trim())
-          .filter(t => t.length > 0)
-        finalTargets = [...new Set([...finalTargets, ...newTargets])]
-      }
-      
-      if (finalTargets.length === 0) {
-        toast({ title: '请输入至少一个扫描目标', variant: 'destructive' })
-        return
-      }
-      targets = finalTargets
-      const types = [...new Set(targets.map(detectTargetType))]
-      targetType = types.length === 1 ? types[0] : 'mixed'
-    } else {
-      if (formData.assetIds.length === 0) {
-        toast({ title: '请选择至少一个资产', variant: 'destructive' })
-        return
-      }
-      const selectedAssets = assets.filter(a => formData.assetIds.includes(a.id))
-      targets = selectedAssets.map(a => a.target)
-      const types = [...new Set(selectedAssets.map(a => a.type))]
-      targetType = types.length === 1 ? types[0] : 'mixed'
+    // 如果输入框有内容，自动添加到目标列表
+    let finalTargets = [...directTargets]
+    if (targetInput.trim()) {
+      const newTargets = targetInput
+        .split(/[\n,\s]+/)
+        .map(t => t.trim())
+        .filter(t => t.length > 0)
+      finalTargets = [...new Set([...finalTargets, ...newTargets])]
     }
+    
+    if (finalTargets.length === 0) {
+      toast({ title: '请输入至少一个扫描目标', variant: 'destructive' })
+      return
+    }
+    targets = finalTargets
+    const types = [...new Set(targets.map(detectTargetType))]
+    targetType = types.length === 1 ? types[0] : 'mixed'
 
     if ((formData.config.scanTypes?.length ?? 0) === 0) {
       toast({ title: '请选择至少一种扫描类型', variant: 'destructive' })
@@ -231,28 +204,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
     }
   }
 
-  const toggleAsset = (assetId: string) => {
-    if (formData.assetIds.includes(assetId)) {
-      setFormData({
-        ...formData,
-        assetIds: formData.assetIds.filter((id) => id !== assetId),
-      })
-    } else {
-      setFormData({
-        ...formData,
-        assetIds: [...formData.assetIds, assetId],
-      })
-    }
-  }
-
-  const selectAllAssets = () => {
-    if (formData.assetIds.length === assets.length) {
-      setFormData({ ...formData, assetIds: [] })
-    } else {
-      setFormData({ ...formData, assetIds: assets.map((a) => a.id) })
-    }
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
@@ -282,25 +233,16 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
             </div>
           </div>
 
-          {/* 扫描目标 */}
+          {/* 扫描目标 - 只支持直接输入 */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">扫描目标 <span className="text-destructive">*</span></Label>
-              <Tabs value={targetMode} onValueChange={(v) => setTargetMode(v as 'direct' | 'asset')} className="h-8">
-                <TabsList className="h-8 p-1">
-                  <TabsTrigger value="direct" className="text-xs h-6 px-3">直接输入</TabsTrigger>
-                  <TabsTrigger value="asset" className="text-xs h-6 px-3">从资产选择</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+            <Label className="text-sm">扫描目标 <span className="text-destructive">*</span></Label>
             
-            {targetMode === 'direct' ? (
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <Textarea
-                      placeholder="输入目标，每行一个或用逗号分隔&#10;支持：IP / 域名 / URL / CIDR&#10;&#10;示例：&#10;192.168.1.1&#10;example.com&#10;https://target.com"
-                      value={targetInput}
+            <div className="border rounded-lg p-4 bg-muted/30">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <Textarea
+                    placeholder="输入目标，每行一个或用逗号分隔&#10;支持：IP / 域名 / URL / CIDR&#10;&#10;示例：&#10;192.168.1.1&#10;example.com&#10;https://target.com"
+                    value={targetInput}
                       onChange={(e) => setTargetInput(e.target.value)}
                       className="min-h-[120px] bg-background resize-none font-mono text-sm"
                     />
@@ -349,52 +291,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-muted-foreground">
-                    已选择 <span className="font-medium text-foreground">{formData.assetIds.length}</span> 个资产
-                  </span>
-                  <Button variant="ghost" size="sm" className="h-7" onClick={selectAllAssets}>
-                    {formData.assetIds.length === assets.length ? '取消全选' : '全选'}
-                  </Button>
-                </div>
-                <div className="border rounded-lg bg-background max-h-[140px] overflow-auto">
-                  {assetsLoading ? (
-                    <div className="flex items-center justify-center h-[100px] text-sm text-muted-foreground">
-                      加载中...
-                    </div>
-                  ) : assets.length === 0 ? (
-                    <div className="flex items-center justify-center h-[100px] text-sm text-muted-foreground">
-                      暂无资产，请先添加或切换到直接输入
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-px bg-border">
-                      {assets.map((asset) => (
-                        <div
-                          key={asset.id}
-                          className={cn(
-                            'p-3 cursor-pointer transition-colors bg-background',
-                            formData.assetIds.includes(asset.id)
-                              ? 'bg-primary/5'
-                              : 'hover:bg-muted/50'
-                          )}
-                          onClick={() => toggleAsset(asset.id)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Checkbox checked={formData.assetIds.includes(asset.id)} className="shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate">{asset.name}</div>
-                              <div className="text-xs text-muted-foreground truncate">{asset.target}</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* 扫描类型 */}

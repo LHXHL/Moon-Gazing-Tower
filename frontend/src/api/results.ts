@@ -15,6 +15,7 @@ export type ResultType =
   | 'monitor' 
   | 'port'
   | 'service'
+  | 'topology'
 
 // 通用结果接口
 export interface ScanResult {

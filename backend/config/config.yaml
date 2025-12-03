@@ -16,9 +16,9 @@ mongodb:
   timeout: 10
 
 redis:
-  host: "localhost"
+  host: ""
   port: 30890
-  password: "jbsbzlfc"
+  password: ""
   db: 0
 
 scanner:

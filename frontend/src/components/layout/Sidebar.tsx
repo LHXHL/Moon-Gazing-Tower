@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app'
 import {
   LayoutDashboard,
-  Server,
   ListTodo,
   Shield,
   FileCode,
@@ -16,12 +15,13 @@ import {
   Bell,
   Layers,
   Calendar,
+  Network,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const menuItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
-  { path: '/assets', icon: Server, label: '资产管理' },
+  { path: '/topology', icon: Network, label: '资产星图' },
   { path: '/tasks', icon: ListTodo, label: '任务管理' },
   { path: '/cruise', icon: Calendar, label: '自动巡航' },
   { path: '/vulnerabilities', icon: Shield, label: '漏洞管理' },

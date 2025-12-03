@@ -10,15 +10,13 @@ import (
 )
 
 type DashboardHandler struct {
-	assetService *service.AssetService
-	taskService  *service.TaskService
-	vulnService  *service.VulnService
-	nodeService  *service.NodeService
+	taskService *service.TaskService
+	vulnService *service.VulnService
+	nodeService *service.NodeService
 }
 
 func NewDashboardHandler() *DashboardHandler {
 	return &DashboardHandler{
-		assetService: service.NewAssetService(),
 		taskService:  service.NewTaskService(),
 		vulnService:  service.NewVulnService(),
 		nodeService:  service.NewNodeService(),
@@ -30,9 +28,6 @@ func NewDashboardHandler() *DashboardHandler {
 func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 	workspaceID := c.Query("workspace_id")
 	
-	// Get asset stats
-	assetStats, _ := h.assetService.GetAssetStats(workspaceID)
-	
 	// Get task stats
 	taskStats, _ := h.taskService.GetTaskStats(workspaceID)
 	
@@ -43,7 +38,7 @@ func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 	nodeStats, _ := h.nodeService.GetNodeStats()
 	
 	utils.Success(c, gin.H{
-		"assets":          assetStats,
+		"assets":          map[string]interface{}{"total": 0, "active": 0}, // Removed asset stats
 		"tasks":           taskStats,
 		"vulnerabilities": vulnStats,
 		"nodes":           nodeStats,
@@ -80,19 +75,11 @@ func (h *DashboardHandler) GetRecentVulnerabilities(c *gin.Context) {
 	utils.Success(c, vulns)
 }
 
-// GetRecentAssets returns recent assets
+// GetRecentAssets returns recent assets (removed - returns empty)
 // GET /api/dashboard/recent-assets
 func (h *DashboardHandler) GetRecentAssets(c *gin.Context) {
-	workspaceID := c.Query("workspace_id")
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	
-	assets, _, err := h.assetService.ListAssets(workspaceID, "", "", nil, 1, limit)
-	if err != nil {
-		utils.Error(c, utils.ErrCodeDatabaseError, err.Error())
-		return
-	}
-	
-	utils.Success(c, assets)
+	// Asset management has been removed
+	utils.Success(c, []interface{}{})
 }
 
 // GetTrends returns trend data for the dashboard

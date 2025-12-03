@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,7 +179,7 @@ func (e *TaskExecutor) processTask(task *models.Task) {
 			Fingerprint:            true,
 			VulnScan:               true,
 			WebCrawler:             true,
-			DirScan:                false,
+			DirScan:                true,
 			SensitiveScan:          true,
 		})
 
@@ -367,16 +368,21 @@ func (e *TaskExecutor) executeStreamingPipeline(task *models.Task, config *pipel
 			default:
 				resultType = models.ResultTypeURL
 			}
+			// 规范化 URL（移除默认端口）
+			normalizedURL := normalizeURL(r.Output)
+			normalizedInput := normalizeURL(r.Input)
 			scanResult = &models.ScanResult{
 				TaskID:      task.ID,
 				WorkspaceID: task.WorkspaceID,
 				Type:        resultType,
 				Source:      r.Source,
 				Data: bson.M{
-					"url":          r.Output,
-					"input":        r.Input,
+					"url":          normalizedURL,
+					"input":        normalizedInput,
+					"target":       normalizedInput, // 同时存储 target 字段供前端显示
 					"method":       r.Method,
 					"source":       r.Source,
+					"crawler":      r.Source, // 爬虫来源
 					"status_code":  r.StatusCode,
 					"content_type": r.ContentType,
 					"length":       r.Length,
@@ -482,4 +488,33 @@ func (e *TaskExecutor) failTask(task *models.Task, errMsg string) {
 // executorIsIPAddress 判断是否为 IP 地址 (executor专用)
 func executorIsIPAddress(s string) bool {
 	return net.ParseIP(s) != nil
+}
+
+// normalizeURL 规范化 URL（移除默认端口）
+func normalizeURL(rawURL string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+	
+	// 移除 :443 (HTTPS 默认端口)
+	if len(rawURL) > 4 {
+		// https://example.com:443/path -> https://example.com/path
+		rawURL = strings.Replace(rawURL, ":443/", "/", 1)
+		// https://example.com:443 -> https://example.com
+		if strings.HasSuffix(rawURL, ":443") {
+			rawURL = rawURL[:len(rawURL)-4]
+		}
+	}
+	
+	// 移除 :80 (HTTP 默认端口)
+	if len(rawURL) > 3 {
+		// http://example.com:80/path -> http://example.com/path
+		rawURL = strings.Replace(rawURL, ":80/", "/", 1)
+		// http://example.com:80 -> http://example.com
+		if strings.HasSuffix(rawURL, ":80") {
+			rawURL = rawURL[:len(rawURL)-3]
+		}
+	}
+	
+	return rawURL
 }

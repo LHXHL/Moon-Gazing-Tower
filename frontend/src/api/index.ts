@@ -1,5 +1,4 @@
 export * from './auth'
-export * from './assets'
 export * from './tasks'
 export { vulnApi, type Vulnerability, type VulnStats } from './vulnerabilities'
 export * from './pocs'

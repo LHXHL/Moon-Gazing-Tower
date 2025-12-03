@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { taskApi } from '@/api/tasks'
 import { resultApi, type SubdomainResult, type ResultType } from '@/api/results'
+import TaskTopologyView from '@/components/tasks/TaskTopologyView'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,6 +61,7 @@ const tabConfig = [
   { id: 'vuln', label: '漏洞' },
   { id: 'port', label: '端口' },
   { id: 'service', label: 'Web服务' },
+  { id: 'topology', label: '资产星图' },
 ]
 
 export default function TaskDetailPage() {
@@ -1131,7 +1133,8 @@ export default function TaskDetailPage() {
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar - 只在非资产星图tab时显示 */}
+      {currentTab !== 'topology' && (
       <div className="border-b bg-background px-6 py-3">
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-md">
@@ -1296,10 +1299,15 @@ export default function TaskDetailPage() {
           )}
         </div>
       </div>
+      )}
 
-      {/* Table Content */}
+      {/* Table Content or Topology View */}
       <div className="flex-1 overflow-auto">
-        {renderTable()}
+        {currentTab === 'topology' ? (
+          <TaskTopologyView taskId={id!} />
+        ) : (
+          renderTable()
+        )}
       </div>
     </div>
   )

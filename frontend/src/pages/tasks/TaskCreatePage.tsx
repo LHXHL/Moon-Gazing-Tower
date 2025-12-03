@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { taskApi, TaskConfig } from '@/api/tasks'
-import { assetApi } from '@/api/assets'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -60,7 +58,6 @@ export default function TaskCreatePage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    assetIds: [] as string[],
     config: {
       scanTypes: ['port_scan', 'service_detect'],
       port_scan_mode: 'quick',
@@ -81,13 +78,6 @@ export default function TaskCreatePage() {
   // 直接输入的目标
   const [directTargets, setDirectTargets] = useState<string[]>([])
   const [targetInput, setTargetInput] = useState('')
-  const [targetMode, setTargetMode] = useState<'direct' | 'asset'>('direct')
-
-  // 获取资产列表
-  const { data: assetsData, isLoading: assetsLoading } = useQuery({
-    queryKey: ['assets-for-task'],
-    queryFn: () => assetApi.getAssets({ pageSize: 100 }),
-  })
 
   // 创建任务
   const createMutation = useMutation({
@@ -100,8 +90,6 @@ export default function TaskCreatePage() {
       toast({ title: '创建失败', description: error.message, variant: 'destructive' })
     },
   })
-
-  const assets = assetsData?.data?.list || []
 
   // 根据选择的扫描类型自动确定任务类型
   const getTaskType = (scanTypes: string[]): string => {
@@ -146,33 +134,19 @@ export default function TaskCreatePage() {
       return
     }
     
-    // 根据输入模式验证目标
+    // 验证目标 - 只支持直接输入模式
     let targets: string[] = []
     let targetType: string = 'unknown'
 
-    if (targetMode === 'direct') {
-      if (directTargets.length === 0) {
-        toast({ title: '请输入至少一个扫描目标', variant: 'destructive' })
-        return
-      }
-      targets = directTargets
-      
-      // 自动检测目标类型
-      const types = [...new Set(targets.map(detectTargetType))]
-      targetType = types.length === 1 ? types[0] : 'mixed'
-    } else {
-      if (formData.assetIds.length === 0) {
-        toast({ title: '请选择至少一个资产', variant: 'destructive' })
-        return
-      }
-      // 获取选中资产的目标值和类型
-      const selectedAssets = assets.filter(a => formData.assetIds.includes(a.id))
-      targets = selectedAssets.map(a => a.target)
-      
-      // 判断目标类型 (如果有多种类型则为 mixed)
-      const types = [...new Set(selectedAssets.map(a => a.type))]
-      targetType = types.length === 1 ? types[0] : 'mixed'
+    if (directTargets.length === 0) {
+      toast({ title: '请输入至少一个扫描目标', variant: 'destructive' })
+      return
     }
+    targets = directTargets
+    
+    // 自动检测目标类型
+    const types = [...new Set(targets.map(detectTargetType))]
+    targetType = types.length === 1 ? types[0] : 'mixed'
     
     if ((formData.config.scanTypes?.length ?? 0) === 0) {
       toast({ title: '请选择至少一种扫描类型', variant: 'destructive' })
@@ -210,28 +184,6 @@ export default function TaskCreatePage() {
           scanTypes: [...current, scanTypeId],
         },
       })
-    }
-  }
-
-  const toggleAsset = (assetId: string) => {
-    if (formData.assetIds.includes(assetId)) {
-      setFormData({
-        ...formData,
-        assetIds: formData.assetIds.filter((id) => id !== assetId),
-      })
-    } else {
-      setFormData({
-        ...formData,
-        assetIds: [...formData.assetIds, assetId],
-      })
-    }
-  }
-
-  const selectAllAssets = () => {
-    if (formData.assetIds.length === assets.length) {
-      setFormData({ ...formData, assetIds: [] })
-    } else {
-      setFormData({ ...formData, assetIds: assets.map((a) => a.id) })
     }
   }
 
@@ -521,118 +473,67 @@ export default function TaskCreatePage() {
             </CardContent>
           </Card>
 
-          {/* 选择目标 */}
+          {/* 选择目标 - 只支持直接输入 */}
           <Card>
             <CardHeader>
               <CardTitle>扫描目标 *</CardTitle>
-              <CardDescription>直接输入目标或从已有资产中选择</CardDescription>
+              <CardDescription>输入要扫描的目标</CardDescription>
             </CardHeader>
-            <CardContent>
-              <Tabs value={targetMode} onValueChange={(v) => setTargetMode(v as 'direct' | 'asset')}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="direct">直接输入</TabsTrigger>
-                  <TabsTrigger value="asset">选择资产</TabsTrigger>
-                </TabsList>
-                
-                {/* 直接输入目标 */}
-                <TabsContent value="direct" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>输入目标（支持IP、域名、URL、CIDR）</Label>
-                    <div className="flex gap-2">
-                      <Textarea
-                        placeholder="每行一个目标，或用逗号/空格分隔&#10;例如:&#10;192.168.1.1&#10;example.com&#10;https://example.com&#10;10.0.0.0/24"
-                        value={targetInput}
-                        onChange={(e) => setTargetInput(e.target.value)}
-                        rows={4}
-                        className="flex-1"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="button" onClick={addDirectTargets} size="sm">
-                        <Plus className="h-4 w-4 mr-1" />
-                        添加
-                      </Button>
-                      {directTargets.length > 0 && (
-                        <Button type="button" variant="outline" size="sm" onClick={clearDirectTargets}>
-                          清空全部
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* 已添加的目标列表 */}
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>输入目标（支持IP、域名、URL、CIDR）</Label>
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="每行一个目标，或用逗号/空格分隔&#10;例如:&#10;192.168.1.1&#10;example.com&#10;https://example.com&#10;10.0.0.0/24"
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    rows={4}
+                    className="flex-1"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" onClick={addDirectTargets} size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    添加
+                  </Button>
                   {directTargets.length > 0 && (
-                    <div className="space-y-2">
-                      <Label>已添加目标（{directTargets.length}个）</Label>
-                      <div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1">
-                        {directTargets.map((target, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-2 bg-muted rounded text-sm"
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <Badge variant="outline" className="shrink-0">
-                                {detectTargetType(target)}
-                              </Badge>
-                              <span className="truncate">{target}</span>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0"
-                              onClick={() => removeDirectTarget(target)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </TabsContent>
-                
-                {/* 选择已有资产 */}
-                <TabsContent value="asset" className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>已选择 {formData.assetIds.length} 个资产</Label>
-                    <Button variant="outline" size="sm" onClick={selectAllAssets}>
-                      {formData.assetIds.length === assets.length ? '取消全选' : '全选'}
+                    <Button type="button" variant="outline" size="sm" onClick={clearDirectTargets}>
+                      清空全部
                     </Button>
-                  </div>
-                  <div className="max-h-64 overflow-auto space-y-2 border rounded-lg p-2">
-                    {assetsLoading ? (
-                      <div className="text-center py-4 text-muted-foreground">加载中...</div>
-                    ) : assets.length === 0 ? (
-                      <div className="text-center py-4 text-muted-foreground">
-                        暂无资产，请先添加资产或切换到直接输入模式
-                      </div>
-                    ) : (
-                      assets.map((asset) => (
-                        <div
-                          key={asset.id}
-                          className={`p-2 border rounded cursor-pointer transition-colors ${
-                            formData.assetIds.includes(asset.id)
-                              ? 'border-primary bg-primary/5'
-                              : 'hover:bg-muted'
-                          }`}
-                          onClick={() => toggleAsset(asset.id)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Checkbox checked={formData.assetIds.includes(asset.id)} />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">{asset.name}</div>
-                              <div className="text-xs text-muted-foreground truncate">
-                                {asset.target}
-                              </div>
-                            </div>
-                          </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* 已添加的目标列表 */}
+              {directTargets.length > 0 && (
+                <div className="space-y-2">
+                  <Label>已添加目标（{directTargets.length}个）</Label>
+                  <div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1">
+                    {directTargets.map((target, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-2 bg-muted rounded text-sm"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Badge variant="outline" className="shrink-0">
+                            {detectTargetType(target)}
+                          </Badge>
+                          <span className="truncate">{target}</span>
                         </div>
-                      ))
-                    )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => removeDirectTarget(target)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                </TabsContent>
-              </Tabs>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

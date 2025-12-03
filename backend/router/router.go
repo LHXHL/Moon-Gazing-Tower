@@ -59,27 +59,6 @@ func SetupRouter() *gin.Engine {
 				userGroup.PUT("/:id/password", middleware.AdminMiddleware(), userHandler.ResetPassword)
 			}
 			
-			// Asset routes
-			assetHandler := api.NewAssetHandler()
-			assetGroup := protected.Group("/assets")
-			{
-				assetGroup.GET("", assetHandler.ListAssets)
-				assetGroup.GET("/stats", assetHandler.GetAssetStats)
-				assetGroup.GET("/groups", assetHandler.ListAssetGroups)
-				assetGroup.POST("/groups", assetHandler.CreateAssetGroup)
-				assetGroup.DELETE("/groups/:id", assetHandler.DeleteAssetGroup)
-				assetGroup.GET("/blackwhitelist", assetHandler.ListBlackWhiteList)
-				assetGroup.POST("/blackwhitelist", assetHandler.CreateBlackWhiteList)
-				assetGroup.DELETE("/blackwhitelist/:id", assetHandler.DeleteBlackWhiteList)
-				assetGroup.GET("/:id", assetHandler.GetAsset)
-				assetGroup.POST("", assetHandler.CreateAsset)
-				assetGroup.PUT("/:id", assetHandler.UpdateAsset)
-				assetGroup.DELETE("/:id", assetHandler.DeleteAsset)
-				assetGroup.POST("/batch-delete", assetHandler.BatchDeleteAssets)
-				assetGroup.POST("/:id/tags", assetHandler.AddAssetTags)
-				assetGroup.DELETE("/:id/tags", assetHandler.RemoveAssetTags)
-			}
-			
 			// Task routes
 			taskHandler := api.NewTaskHandler()
 			resultHandler := api.NewResultHandler()

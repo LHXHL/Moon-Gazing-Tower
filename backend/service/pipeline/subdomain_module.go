@@ -9,23 +9,97 @@ import (
 
 	"moongazing/scanner/core"
 	"moongazing/scanner/subdomain"
+	"moongazing/scanner/subdomain/thirdparty"
 )
 
 // SubdomainScanModule 子域名扫描模块
-// 接收主域名，执行被动枚举，输出子域名结果
+// 使用综合扫描器：主动枚举（字典爆破）为主，第三方API为辅
 type SubdomainScanModule struct {
 	BaseModule
-	subfinder    *subdomain.SubfinderScanner
-	resultChan   chan interface{}
-	maxEnumTime  int // 最大枚举时间（分钟）
-	resolveIP    bool
-	dnsResolvers []string
+	activeScanner *subdomain.ActiveScanner
+	resultChan    chan interface{}
+	config        *subdomain.ActiveScannerConfig
+	apiConfig     *thirdparty.APIConfig
+	resolveIP     bool
+	dnsResolvers  []string
 }
 
-// NewSubdomainScanModule 创建子域名扫描模块
+// SubdomainScanConfig 子域名扫描配置
+type SubdomainScanConfig struct {
+	// 主动枚举配置
+	BruteConcurrency  int  // 字典爆破并发数 (默认 500)
+	EnableBrute       bool // 是否启用字典爆破 (默认 true)
+	EnableRecursive   bool // 是否启用递归爆破 (默认 false)
+	RecursiveDepth    int  // 递归深度 (默认 2)
+
+	// API 配置
+	EnableAPI     bool     // 是否启用第三方API (默认 true)
+	APISources    []string // 启用的API源
+	APIMaxResults int      // 每个API最大结果数 (默认 500)
+
+	// API 密钥
+	FofaEmail         string
+	FofaKey           string
+	HunterKey         string
+	QuakeKey          string
+	SecurityTrailsKey string
+
+	// 其他
+	ResolveIP        bool // 是否解析IP (默认 true)
+	VerifySubdomains bool // 是否验证子域名存活 (默认 true)
+}
+
+// DefaultSubdomainScanConfig 默认配置
+func DefaultSubdomainScanConfig() *SubdomainScanConfig {
+	return &SubdomainScanConfig{
+		BruteConcurrency:  500,
+		EnableBrute:       true,
+		EnableRecursive:   false,
+		RecursiveDepth:    2,
+		EnableAPI:         false, // 默认关闭API，只使用字典爆破
+		APISources:        []string{},
+		APIMaxResults:     500,
+		ResolveIP:         true,
+		VerifySubdomains:  true,
+	}
+}
+
+// NewSubdomainScanModule 创建子域名扫描模块（新版本，使用综合扫描器）
 func NewSubdomainScanModule(ctx context.Context, nextModule ModuleRunner, maxEnumTime int, resolveIP bool) *SubdomainScanModule {
-	if maxEnumTime <= 0 {
-		maxEnumTime = 10 // 默认最大10分钟
+	// 兼容旧接口，使用默认配置
+	cfg := DefaultSubdomainScanConfig()
+	cfg.ResolveIP = resolveIP
+	return NewSubdomainScanModuleWithConfig(ctx, nextModule, cfg)
+}
+
+// NewSubdomainScanModuleWithConfig 使用完整配置创建子域名扫描模块
+func NewSubdomainScanModuleWithConfig(ctx context.Context, nextModule ModuleRunner, scanConfig *SubdomainScanConfig) *SubdomainScanModule {
+	if scanConfig == nil {
+		scanConfig = DefaultSubdomainScanConfig()
+	}
+
+	// 构建 ActiveScanner 配置
+	activeCfg := &subdomain.ActiveScannerConfig{
+		BruteConcurrency:  scanConfig.BruteConcurrency,
+		EnableBrute:       scanConfig.EnableBrute,
+		EnableRecursive:   scanConfig.EnableRecursive,
+		RecursiveDepth:    scanConfig.RecursiveDepth,
+		WildcardDetection: true,
+		ResolveTimeout:    3,
+		EnableAPI:         scanConfig.EnableAPI,
+		APISources:        scanConfig.APISources,
+		APIMaxResults:     scanConfig.APIMaxResults,
+		VerifySubdomains:  scanConfig.VerifySubdomains,
+		EnableHTTPProbe:   false,
+	}
+
+	// 构建 API 配置
+	apiCfg := &thirdparty.APIConfig{
+		FofaEmail:         scanConfig.FofaEmail,
+		FofaKey:           scanConfig.FofaKey,
+		HunterKey:         scanConfig.HunterKey,
+		QuakeKey:          scanConfig.QuakeKey,
+		SecurityTrailsKey: scanConfig.SecurityTrailsKey,
 	}
 
 	m := &SubdomainScanModule{
@@ -35,21 +109,18 @@ func NewSubdomainScanModule(ctx context.Context, nextModule ModuleRunner, maxEnu
 			nextModule: nextModule,
 			dupChecker: NewDuplicateChecker(),
 		},
-		subfinder:   subdomain.NewSubfinderScanner(),
-		resultChan:  make(chan interface{}, 1000),
-		maxEnumTime: maxEnumTime,
-		resolveIP:   resolveIP,
+		activeScanner: subdomain.NewActiveScanner(activeCfg, apiCfg),
+		resultChan:    make(chan interface{}, 2000), // 增大缓冲区
+		config:        activeCfg,
+		apiConfig:     apiCfg,
+		resolveIP:     scanConfig.ResolveIP,
 		dnsResolvers: []string{
 			"8.8.8.8:53",
 			"1.1.1.1:53",
 			"114.114.114.114:53",
+			"223.5.5.5:53",
 		},
 	}
-
-	// 配置 subfinder
-	m.subfinder.MaxEnumerationTime = maxEnumTime
-	m.subfinder.Threads = 10
-	m.subfinder.Timeout = 30
 
 	return m
 }
@@ -72,7 +143,6 @@ func (m *SubdomainScanModule) ModuleRun() error {
 	}
 
 	// 结果处理协程 - 发送到下一个模块
-	// 注意：去重检查已在 scanSubdomains 的回调中完成，这里不再重复检查
 	resultWg.Add(1)
 	go func() {
 		defer resultWg.Done()
@@ -135,32 +205,31 @@ func (m *SubdomainScanModule) ModuleRun() error {
 	}
 }
 
-// scanSubdomains 执行子域名扫描
+// scanSubdomains 执行子域名扫描（使用综合扫描器）
 func (m *SubdomainScanModule) scanSubdomains(domain string) {
-	log.Printf("[%s] Starting subdomain scan for %s", m.name, domain)
-
-	ctx, cancel := context.WithTimeout(m.ctx, time.Duration(m.maxEnumTime+2)*time.Minute)
-	defer cancel()
+	log.Printf("[%s] Starting comprehensive subdomain scan for %s", m.name, domain)
+	log.Printf("[%s] Brute enabled: %v, API enabled: %v, Sources: %v",
+		m.name, m.config.EnableBrute, m.config.EnableAPI, m.config.APISources)
 
 	// 使用回调函数实时处理结果
-	err := m.subfinder.ScanWithCallback(ctx, domain, func(subdomain string) {
+	err := m.activeScanner.ScanWithCallback(m.ctx, domain, func(subResult subdomain.SubdomainResult) {
 		// 去重检查
-		if m.dupChecker.IsSubdomainDuplicate(subdomain) {
+		if m.dupChecker.IsSubdomainDuplicate(subResult.FullDomain) {
 			return
 		}
 
 		result := SubdomainResult{
-			Domain: subdomain,
-			Source: "subfinder",
+			Domain: subResult.FullDomain,
+			Source: "active", // 综合扫描
+			IPs:    subResult.IPs,
 		}
 
-		// 可选：解析 IP
-		if m.resolveIP {
-			ips := m.resolveIPs(subdomain)
-			result.IPs = ips
+		// 如果没有 IP 且需要解析
+		if m.resolveIP && len(result.IPs) == 0 {
+			result.IPs = m.resolveIPs(subResult.FullDomain)
 		}
 
-		log.Printf("[%s] Found subdomain: %s", m.name, subdomain)
+		log.Printf("[%s] Found subdomain: %s (IPs: %v)", m.name, subResult.FullDomain, result.IPs)
 
 		select {
 		case <-m.ctx.Done():
@@ -170,7 +239,7 @@ func (m *SubdomainScanModule) scanSubdomains(domain string) {
 	})
 
 	if err != nil {
-		log.Printf("[%s] Subfinder error for %s: %v", m.name, domain, err)
+		log.Printf("[%s] Scan error for %s: %v", m.name, domain, err)
 	}
 
 	log.Printf("[%s] Subdomain scan completed for %s", m.name, domain)
@@ -208,7 +277,7 @@ func (m *SubdomainScanModule) resolveIPs(domain string) []string {
 	return ips
 }
 
-// SubdomainSecurityModule 子域名安全检测模块
+// DomainVerifyModule 子域名安全检测模块
 // 执行子域名接管检测、DNS解析等
 type DomainVerifyModule struct {
 	BaseModule
@@ -231,7 +300,7 @@ func NewDomainVerifyModule(ctx context.Context, nextModule ModuleRunner, concurr
 			nextModule: nextModule,
 			dupChecker: NewDuplicateChecker(),
 		},
-		domainScanner:   subdomain.NewDomainScanner(10), // 默认10并发
+		domainScanner:   subdomain.NewDomainScanner(10),
 		takeoverScanner: subdomain.NewTakeoverScanner(20),
 		resultChan:      make(chan interface{}, 500),
 		concurrency:     concurrency,
@@ -348,7 +417,6 @@ func (m *DomainVerifyModule) checkSubdomain(sr SubdomainResult) {
 	}
 
 	// 子域名接管检测
-	// if m.checkTakeover {
 	takeoverResult, err := m.takeoverScanner.Scan(ctx, sr.Domain)
 	if err != nil {
 		log.Printf("[%s] Takeover scan error for %s: %v", m.name, sr.Domain, err)
@@ -358,19 +426,18 @@ func (m *DomainVerifyModule) checkSubdomain(sr SubdomainResult) {
 		// 发送接管检测结果
 		takeoverRes := TakeoverResult{
 			Domain:       takeoverResult.Domain,
-				CNAME:        takeoverResult.CNAME,
-				Service:      takeoverResult.Service,
-				Vulnerable:   takeoverResult.Vulnerable,
-				Fingerprints: takeoverResult.Fingerprints,
-				Reason:       takeoverResult.Reason,
-			}
-			select {
-			case <-m.ctx.Done():
-				return
-			case m.resultChan <- takeoverRes:
-			}
+			CNAME:        takeoverResult.CNAME,
+			Service:      takeoverResult.Service,
+			Vulnerable:   takeoverResult.Vulnerable,
+			Fingerprints: takeoverResult.Fingerprints,
+			Reason:       takeoverResult.Reason,
 		}
-	// }
+		select {
+		case <-m.ctx.Done():
+			return
+		case m.resultChan <- takeoverRes:
+		}
+	}
 
 	select {
 	case <-m.ctx.Done():
