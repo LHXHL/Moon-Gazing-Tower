@@ -19,11 +19,11 @@ Moon-Gazing-Tower 的核心能力来自于集成的多个开源安全工具。�
 
 ## 2. 端口扫描 (Port Scanning)
 
-**核心工具**: [RustScan](https://github.com/RustScan/RustScan)
+**核心工具**: [GoGo](https://github.com/chainreactors/gogo)
 
 ### 工作流程
 1. **主机发现**: 确认目标主机是否存活。
-2. **端口探测**: 使用 RustScan 进行超高速端口扫描。
+2. **端口探测**: 使用 GoGo 进行超高速端口扫描。
 3. **服务识别**: 对开放端口进行指纹识别，判断运行的服务 (HTTP, SSH, MySQL 等)。
 
 ### 扫描模式

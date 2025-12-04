@@ -304,7 +304,7 @@ func (e *TaskExecutor) executeStreamingPipeline(task *models.Task, config *pipel
 					TaskID:      task.ID,
 					WorkspaceID: task.WorkspaceID,
 					Type:        models.ResultTypePort,
-					Source:      "rustscan",
+					Source:      "gogo",
 					Data: bson.M{
 						"host":    r.Host,
 						"ip":      r.IP,

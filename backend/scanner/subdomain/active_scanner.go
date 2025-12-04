@@ -63,13 +63,6 @@ func (s *ActiveScanner) Run(ctx context.Context, domain string) ([]SubdomainResu
 
 	var wg sync.WaitGroup
 
-	// 1. Subfinder 被动收集（默认启用）
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.runSubfinder(ctx, domain)
-	}()
-
 	// 2. API 枚举（可选）
 	if s.config.EnableAPI {
 		wg.Add(1)
@@ -101,31 +94,6 @@ func (s *ActiveScanner) Run(ctx context.Context, domain string) ([]SubdomainResu
 
 	log.Printf("[ActiveScanner] Scan completed for %s, found %d subdomains", domain, len(results))
 	return results, nil
-}
-
-// runSubfinder 使用 subfinder 进行被动子域名收集
-func (s *ActiveScanner) runSubfinder(ctx context.Context, domain string) {
-	log.Printf("[ActiveScanner] Starting subfinder passive enumeration for %s", domain)
-
-	scanner := NewSubfinderScanner()
-	scanner.MaxEnumerationTime = 5 // 最多5分钟
-
-	result, err := scanner.Scan(ctx, domain)
-	if err != nil {
-		log.Printf("[ActiveScanner] Subfinder error: %v", err)
-		return
-	}
-
-	for _, sub := range result.Subdomains {
-		// 解析IP
-		var ips []string
-		if resolved, err := s.resolveDomain(sub.Domain); err == nil {
-			ips = resolved
-		}
-		s.addResult(sub.Domain, ips, "subfinder")
-	}
-
-	log.Printf("[ActiveScanner] Subfinder found %d subdomains for %s", len(result.Subdomains), domain)
 }
 
 // runAPIEnum 执行API枚举（仅支持付费API: fofa, hunter, quake, securitytrails）
@@ -224,7 +192,7 @@ func (s *ActiveScanner) runAPIEnum(ctx context.Context, domain string) {
 
 // runBruteForce 执行字典爆破
 func (s *ActiveScanner) runBruteForce(ctx context.Context, domain string) {
-	log.Printf("[ActiveScanner] Starting brute force for %s", domain)
+	log.Printf("[ActiveScanner] Starting brute force for %s using ksubdomain", domain)
 
 	// 获取字典
 	subdomains := config.GetSubdomains()
@@ -250,118 +218,37 @@ func (s *ActiveScanner) runBruteForce(ctx context.Context, domain string) {
 		}
 	}
 
-	// 统计信息
-	var resolved, filtered, failed, added int64
-	var mu sync.Mutex
-
-	// 任务通道
-	jobs := make(chan string, s.config.BruteConcurrency)
-	var wg sync.WaitGroup
-
-	// 启动 worker
-	for i := 0; i < s.config.BruteConcurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for sub := range jobs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				fullDomain := fmt.Sprintf("%s.%s", sub, domain)
-				if ips, err := s.resolveDomain(fullDomain); err == nil && len(ips) > 0 {
-					mu.Lock()
-					resolved++
-					mu.Unlock()
-
-					// 过滤泛解析 - 只有当所有IP都是泛解析IP时才过滤
-					if wildcardEnabled && len(wildcardIPs) > 0 {
-						allWildcard := true
-						for _, ip := range ips {
-							if !wildcardIPs[ip] {
-								allWildcard = false
-								break
-							}
-						}
-						if allWildcard {
-							mu.Lock()
-							filtered++
-							mu.Unlock()
-							continue // 跳过泛解析结果
-						}
-					}
-
-					s.addResult(fullDomain, ips, "bruteforce")
-					mu.Lock()
-					added++
-					mu.Unlock()
-
-					// 递归爆破
-					if s.config.EnableRecursive && s.config.RecursiveDepth > 0 {
-						s.recursiveBrute(ctx, fullDomain, 1, wildcardIPs)
-					}
-				} else {
-					mu.Lock()
-					failed++
-					mu.Unlock()
-				}
-			}
-		}()
-	}
-
-	// 发送任务
-	for _, sub := range subdomains {
-		select {
-		case <-ctx.Done():
-			break
-		case jobs <- sub:
-		}
-	}
-
-	close(jobs)
-	wg.Wait()
-
-	log.Printf("[ActiveScanner] Brute force stats for %s: dict=%d, resolved=%d, added=%d, filtered(wildcard)=%d, failed=%d",
-		domain, len(subdomains), resolved, added, filtered, failed)
-}
-
-// recursiveBrute 递归爆破
-func (s *ActiveScanner) recursiveBrute(ctx context.Context, baseDomain string, currentDepth int, wildcardIPs map[string]bool) {
-	if currentDepth >= s.config.RecursiveDepth {
+	// 使用 ksubdomain 进行枚举
+	runner := NewKSubdomainRunner()
+	results, err := runner.RunEnumeration(ctx, domain, subdomains)
+	if err != nil {
+		log.Printf("[ActiveScanner] ksubdomain error: %v", err)
 		return
 	}
 
-	// 使用较小的子字典进行递归
-	recursiveDict := []string{"www", "mail", "api", "dev", "test", "admin", "portal", "app", "m", "mobile"}
+	log.Printf("[ActiveScanner] ksubdomain found %d potential subdomains", len(results))
 
-	for _, sub := range recursiveDict {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		fullDomain := fmt.Sprintf("%s.%s", sub, baseDomain)
-		if ips, err := s.resolveDomain(fullDomain); err == nil && len(ips) > 0 {
-			// 过滤泛解析
-			if len(wildcardIPs) > 0 {
-				isWildcard := true
-				for _, ip := range ips {
-					if !wildcardIPs[ip] {
-						isWildcard = false
-						break
-					}
-				}
-				if isWildcard {
-					continue
+	var added int64
+	for sub, ips := range results {
+		// 过滤泛解析
+		if wildcardEnabled && len(wildcardIPs) > 0 {
+			allWildcard := true
+			for _, ip := range ips {
+				if !wildcardIPs[ip] {
+					allWildcard = false
+					break
 				}
 			}
-
-			s.addResult(fullDomain, ips, "bruteforce-recursive")
+			if allWildcard {
+				continue // 跳过泛解析结果
+			}
 		}
+
+		s.addResult(sub, ips, "ksubdomain")
+		added++
 	}
+
+	log.Printf("[ActiveScanner] Brute force completed, added %d new subdomains", added)
 }
 
 // resolveDomain 解析域名（使用多个DNS服务器并带重试机制）

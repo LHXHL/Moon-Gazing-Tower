@@ -15,8 +15,8 @@ graph TD
     Task -->|调度| Queue[任务队列 (Redis)]
     Queue --> Worker[扫描 Worker]
     
-    Worker --> Subfinder[子域名枚举]
-    Worker --> RustScan[端口扫描]
+    Worker --> Ksubdomain[子域名枚举]
+    Worker --> GoGo[端口扫描]
     Worker --> Nuclei[漏洞扫描]
     Worker --> Crawler[Web 爬虫]
     
@@ -45,8 +45,8 @@ graph TD
 
 | 引擎 | 用途 |
 |------|------|
-| **Subfinder** | 被动子域名枚举 |
-| **RustScan** | 高速端口扫描 |
+| **Ksubdomain** | 主动子域名枚举 |
+| **GoGo** | 高速端口扫描 |
 | **Nuclei** | 基于模板的漏洞扫描 |
 | **Katana** | 下一代网络爬虫 |
 | **Rad** | 浏览器爬虫 |

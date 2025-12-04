@@ -28,14 +28,13 @@ func (e *TaskExecutor) executeSubdomainScan(task *models.Task) {
 	results := make([]models.ScanResult, 0)
 	
 	// 初始化扫描器
-	subfinderScanner := subdomain.NewSubfinderScanner()
 	domainScanner := subdomain.NewDomainScanner(200)
 	httpxScanner := webscan.NewHttpxScanner(30)
 	
 	// 从配置文件读取第三方 API 密钥，自动创建管理器
 	thirdpartyManager := e.createThirdpartyManager()
 	
-	log.Printf("[TaskExecutor] Using subfinder for passive subdomain collection")
+	log.Printf("[TaskExecutor] Using ksubdomain for subdomain collection")
 
 	for i, target := range targets {
 		// 更新进度
@@ -64,7 +63,7 @@ func (e *TaskExecutor) executeSubdomainScan(task *models.Task) {
 		}
 
 		// 收集子域名
-		subdomainSet := e.collectSubdomains(target, subfinderScanner, domainScanner, thirdpartyManager)
+		subdomainSet := e.collectSubdomains(target, domainScanner, thirdpartyManager)
 		
 		log.Printf("[TaskExecutor] Total unique subdomains collected: %d for %s", len(subdomainSet), target)
 		
@@ -94,7 +93,7 @@ func (e *TaskExecutor) executeSubdomainScan(task *models.Task) {
 				TaskID:      task.ID,
 				WorkspaceID: task.WorkspaceID,
 				Type:        models.ResultTypeSubdomain,
-				Source:      "subfinder+httpx",
+				Source:      "ksubdomain+httpx",
 				Data: bson.M{
 					"subdomain":    httpResult.Host,
 					"domain":       target,
@@ -120,33 +119,19 @@ func (e *TaskExecutor) executeSubdomainScan(task *models.Task) {
 	e.completeTask(task, len(results))
 }
 
-// collectSubdomains 收集子域名（被动枚举 + 第三方API）
-func (e *TaskExecutor) collectSubdomains(target string, subfinderScanner *subdomain.SubfinderScanner, domainScanner *subdomain.DomainScanner, thirdpartyManager *thirdparty.APIManager) map[string]bool {
+// collectSubdomains 收集子域名（内置扫描器 + 第三方API）
+func (e *TaskExecutor) collectSubdomains(target string, domainScanner *subdomain.DomainScanner, thirdpartyManager *thirdparty.APIManager) map[string]bool {
 	subdomainSet := make(map[string]bool)
 	
+	// 使用内置扫描器 (ksubdomain) 收集子域名
+	log.Printf("[TaskExecutor] Domain scanner scanning %s", target)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	
-	// 使用 subfinder 被动收集子域名
-	log.Printf("[TaskExecutor] Subfinder scanning %s", target)
-	subfinderResult, err := subfinderScanner.Scan(ctx, target)
+	scanResult := domainScanner.QuickSubdomainScan(ctx, target)
 	cancel()
-	
-	if err != nil {
-		log.Printf("[TaskExecutor] Subfinder error: %v, fallback to built-in scanner", err)
-		
-		// 回退: 使用内置扫描器
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Minute)
-		scanResult := domainScanner.QuickSubdomainScan(ctx2, target)
-		cancel2()
-		for _, sub := range scanResult.Subdomains {
-			subdomainSet[sub.FullDomain] = true
-		}
-	} else if subfinderResult != nil {
-		for _, sub := range subfinderResult.GetUniqueSubdomains() {
-			subdomainSet[sub] = true
-		}
-		log.Printf("[TaskExecutor] Subfinder found %d subdomains for %s", len(subfinderResult.GetUniqueSubdomains()), target)
+	for _, sub := range scanResult.Subdomains {
+		subdomainSet[sub.FullDomain] = true
 	}
+	log.Printf("[TaskExecutor] Domain scanner found %d subdomains for %s", len(scanResult.Subdomains), target)
 	
 	// 使用第三方 API 收集子域名
 	if thirdpartyManager != nil {

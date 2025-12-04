@@ -59,7 +59,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
       scanTypes: ['port_scan'],
       port_scan_mode: 'quick',
       portRange: '1-65535',
-      rateLimit: 1000,
       timeout: 30,
       concurrent: 10,
     } as TaskConfig,
@@ -91,7 +90,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
         scanTypes: ['port_scan'],
         port_scan_mode: 'quick',
         portRange: '1-65535',
-        rateLimit: 1000,
         timeout: 30,
         concurrent: 10,
       },
@@ -343,20 +341,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
                     <SelectItem value="custom">自定义</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">速率限制</Label>
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={formData.config.rateLimit || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      config: { ...formData.config, rateLimit: Number(e.target.value) },
-                    })
-                  }
-                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">超时 (秒)</Label>

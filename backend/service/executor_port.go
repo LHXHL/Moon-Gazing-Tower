@@ -26,27 +26,26 @@ func (e *TaskExecutor) executePortScan(task *models.Task) {
 
 	results := make([]models.ScanResult, 0)
 	
-	// 使用 RustScan 进行端口扫描
-	rustConfig := &portscan.RustScanConfig{
-		Timeout:   task.Config.Timeout,
-		BatchSize: task.Config.Threads,
-		RateLimit: task.Config.PortScanRate,
+	// 使用 GoGo 进行端口扫描
+	gogoConfig := &portscan.GoGoConfig{
+		Timeout: task.Config.Timeout,
+		Threads: task.Config.Threads,
 	}
-	if rustConfig.Timeout <= 0 {
-		rustConfig.Timeout = 30
+	if gogoConfig.Timeout <= 0 {
+		gogoConfig.Timeout = 30
 	}
-	if rustConfig.BatchSize <= 0 {
-		rustConfig.BatchSize = 4500
+	if gogoConfig.Threads <= 0 {
+		gogoConfig.Threads = 1000
 	}
 	
-	rustScanner := portscan.NewRustScanScannerWithConfig(rustConfig)
-	if !rustScanner.IsAvailable() {
-		e.failTask(task, "RustScan 工具不可用，请先安装 RustScan")
+	gogoScanner := portscan.NewGoGoScannerWithConfig(gogoConfig)
+	if !gogoScanner.IsAvailable() {
+		e.failTask(task, "GoGo 端口扫描器初始化失败")
 		return
 	}
 	
-	log.Printf("[TaskExecutor] Using RustScan for port scanning, config: timeout=%ds, batch=%d",
-		rustConfig.Timeout, rustConfig.BatchSize)
+	log.Printf("[TaskExecutor] Using GoGo for port scanning, config: timeout=%ds, threads=%d",
+		gogoConfig.Timeout, gogoConfig.Threads)
 
 	for i, target := range targets {
 		progress := int((float64(i) / float64(len(targets))) * 100)
@@ -54,11 +53,11 @@ func (e *TaskExecutor) executePortScan(task *models.Task) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		
-		scanResult, err := e.runPortScanMode(ctx, rustScanner, target, task.Config.PortScanMode, task.Config.PortRange)
+		scanResult, err := e.runPortScanMode(ctx, gogoScanner, target, task.Config.PortScanMode, task.Config.PortRange)
 		cancel()
 		
 		if err != nil {
-			log.Printf("[TaskExecutor] RustScan error on %s: %v", target, err)
+			log.Printf("[TaskExecutor] GoGo error on %s: %v", target, err)
 			continue
 		}
 		
@@ -94,7 +93,7 @@ func (e *TaskExecutor) executePortScan(task *models.Task) {
 }
 
 // runPortScanMode 根据模式运行端口扫描
-func (e *TaskExecutor) runPortScanMode(ctx context.Context, rustScanner *portscan.RustScanScanner, target, mode, customPorts string) (*core.ScanResult, error) {
+func (e *TaskExecutor) runPortScanMode(ctx context.Context, gogoScanner *portscan.GoGoScanner, target, mode, customPorts string) (*core.ScanResult, error) {
 	if mode == "" {
 		mode = "quick"
 	}
@@ -102,18 +101,18 @@ func (e *TaskExecutor) runPortScanMode(ctx context.Context, rustScanner *portsca
 	switch mode {
 	case "full":
 		log.Printf("[TaskExecutor] Running full port scan (1-65535) on %s", target)
-		return rustScanner.FullScan(ctx, target)
+		return gogoScanner.FullScan(ctx, target)
 	case "top1000":
 		log.Printf("[TaskExecutor] Running top 1000 port scan on %s", target)
-		return rustScanner.Top1000Scan(ctx, target)
+		return gogoScanner.Top1000Scan(ctx, target)
 	case "custom":
 		if customPorts == "" {
 			customPorts = "1-1000"
 		}
 		log.Printf("[TaskExecutor] Running custom port scan (%s) on %s", customPorts, target)
-		return rustScanner.ScanPorts(ctx, target, customPorts)
+		return gogoScanner.ScanPorts(ctx, target, customPorts)
 	default:
 		log.Printf("[TaskExecutor] Running quick port scan on %s", target)
-		return rustScanner.QuickScan(ctx, target)
+		return gogoScanner.QuickScan(ctx, target)
 	}
 }

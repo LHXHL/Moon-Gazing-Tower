@@ -11,7 +11,7 @@ import (
 )
 
 // runSubdomainScan 执行子域名扫描
-// 使用 subfinder (被动收集) + 第三方API (FOFA/Hunter/Quake) + 内置扫描器 (主动爆破)
+// 使用 第三方API (FOFA/Hunter/Quake) + ksubdomain (主动爆破)
 func (p *ScanPipeline) runSubdomainScan(targets []string) {
 	log.Printf("[Pipeline] Running subdomain scan for %d targets", len(targets))
 
@@ -28,26 +28,6 @@ func (p *ScanPipeline) runSubdomainScan(targets []string) {
 
 		// 使用 map 去重
 		subdomainSet := make(map[string]bool)
-
-		ctx, cancel := context.WithTimeout(p.ctx, 10*time.Minute)
-
-		// 步骤1: 使用 subfinder 被动收集子域名
-		log.Printf("[Pipeline] Step 1: Subfinder passive collection for %s", target)
-		subfinderResult, err := p.subfinderScanner.Scan(ctx, target)
-		if err != nil {
-			log.Printf("[Pipeline] Subfinder error: %v", err)
-		}
-
-		// 收集 subfinder 结果
-		if subfinderResult != nil {
-			subfinderSubs := subfinderResult.GetUniqueSubdomains()
-			for _, sub := range subfinderSubs {
-				subdomainSet[sub] = true
-			}
-			log.Printf("[Pipeline] Subfinder found %d subdomains for %s", len(subfinderSubs), target)
-		}
-
-		cancel()
 
 		// 步骤1.5: 使用第三方 API 收集子域名 (FOFA, Hunter, Quake, CrtSh)
 		if p.thirdpartyManager != nil {
@@ -235,7 +215,7 @@ func (p *ScanPipeline) saveUnverifiedSubdomainResult(subdomain, domain string) {
 		TaskID:      p.task.ID,
 		WorkspaceID: p.task.WorkspaceID,
 		Type:        models.ResultTypeSubdomain,
-		Source:      "subfinder",
+		Source:      "ksubdomain",
 		Data: bson.M{
 			"subdomain":   subdomain,
 			"domain":      domain,

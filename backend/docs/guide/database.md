@@ -66,4 +66,4 @@ Moon-Gazing-Tower 使用 MongoDB 作为主要的数据存储。以下是核心�
 | `task_id` | ObjectId | 关联任务 ID |
 | `type` | String | 结果类型: `subdomain`, `port`, `service`, `vuln` |
 | `data` | Object | 具体的扫描数据 (结构随类型变化) |
-| `source` | String | 数据来源工具 (如 `subfinder`, `rustscan`) |
+| `source` | String | 数据来源工具 (如 `ksubdomain`, `gogo`) |

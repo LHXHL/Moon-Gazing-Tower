@@ -35,7 +35,7 @@ type CSegmentResult struct {
 
 // CSegmentScanner handles C segment scanning
 type CSegmentScanner struct {
-	RustScanner *RustScanScanner
+	GoGoScanner *GoGoScanner
 	Timeout     time.Duration
 	Concurrency int
 	PingTimeout time.Duration
@@ -47,7 +47,7 @@ func NewCSegmentScanner(concurrency int) *CSegmentScanner {
 		concurrency = 50
 	}
 	return &CSegmentScanner{
-		RustScanner: NewRustScanScanner(),
+		GoGoScanner: NewGoGoScanner(),
 		Timeout:     2 * time.Second,
 		Concurrency: concurrency,
 		PingTimeout: 1 * time.Second,
@@ -180,13 +180,13 @@ func (s *CSegmentScanner) ScanHost(ctx context.Context, ip string, ports []int) 
 		result.Hostname = strings.TrimSuffix(names[0], ".")
 	}
 
-	// Scan specified ports using RustScan
-	if len(ports) > 0 && s.RustScanner.IsAvailable() {
+	// Scan specified ports using GoGo
+	if len(ports) > 0 && s.GoGoScanner.IsAvailable() {
 		portStrs := make([]string, len(ports))
 		for i, p := range ports {
 			portStrs[i] = fmt.Sprintf("%d", p)
 		}
-		scanResult, err := s.RustScanner.ScanPorts(ctx, ip, strings.Join(portStrs, ","))
+		scanResult, err := s.GoGoScanner.ScanPorts(ctx, ip, strings.Join(portStrs, ","))
 		if err == nil && scanResult != nil {
 			result.OpenPorts = scanResult.Ports
 		}

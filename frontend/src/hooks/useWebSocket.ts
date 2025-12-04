@@ -67,25 +67,20 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
         wsUrl = `${protocol}//${host}:${port}${url}`
       }
 
-      console.log('Connecting to WebSocket:', wsUrl)
-
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
-        console.log('WebSocket connected')
         setIsConnected(true)
         onOpenRef.current?.()
       }
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected')
         setIsConnected(false)
         onCloseRef.current?.()
 
         // Attempt to reconnect
         if (reconnect && shouldReconnectRef.current) {
-          console.log(`Reconnecting in ${reconnectInterval}ms...`)
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, reconnectInterval)

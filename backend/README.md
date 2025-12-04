@@ -24,8 +24,8 @@
 - 批量操作
 
 ### 扫描能力
-- **子域名枚举**：集成 subfinder
-- **端口扫描**：集成 rustscan
+- **子域名枚举**：集成 ksubdomain
+- **端口扫描**：集成 gogo
 - **Web 爬虫**：集成 katana、rad
 - **漏洞扫描**：集成 Nuclei CLI
 - **指纹识别**：内置指纹库
@@ -183,8 +183,8 @@ backend/
 
 | 工具 | 用途 | 下载地址 |
 |------|------|----------|
-| subfinder | 子域名枚举 | https://github.com/projectdiscovery/subfinder |
-| rustscan | 端口扫描 | https://github.com/RustScan/RustScan |
+| ksubdomain | 子域名枚举 | https://github.com/boy-hack/ksubdomain |
+| gogo | 端口扫描 | https://github.com/chainreactors/gogo |
 | katana | Web 爬虫 | https://github.com/projectdiscovery/katana |
 | rad | Web 爬虫 | https://github.com/chaitin/rad |
 | nuclei | 漏洞扫描 | https://github.com/projectdiscovery/nuclei |

@@ -105,7 +105,6 @@ export default function TaskDetailPage() {
       // 按 tabConfig 顺序找第一个有数据的 tab
       const firstWithData = tabConfig.find(tab => (stats[tab.id] || 0) > 0)
       if (firstWithData) {
-        console.log('Auto selecting tab:', firstWithData.id, 'stats:', stats)
         setActiveTab(firstWithData.id as ResultType)
       } else {
         // 默认选择 domain
@@ -204,15 +203,6 @@ export default function TaskDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const results: any[] = resultsData?.data?.list || []
   const total = resultsData?.data?.total || 0
-  
-  // Debug logs
-  console.log('TaskDetailPage Debug:', {
-    activeTab,
-    currentTab,
-    statsData: statsData?.data,
-    resultsData: resultsData?.data,
-    resultsCount: results.length,
-  })
 
   // 生成带统计数字的tabs
   const tabs = tabConfig.map(tab => ({
@@ -1304,7 +1294,7 @@ export default function TaskDetailPage() {
       {/* Table Content or Topology View */}
       <div className="flex-1 overflow-auto">
         {currentTab === 'topology' ? (
-          <TaskTopologyView taskId={id!} />
+          <TaskTopologyView taskId={id!} taskName={task?.name || ''} />
         ) : (
           renderTable()
         )}

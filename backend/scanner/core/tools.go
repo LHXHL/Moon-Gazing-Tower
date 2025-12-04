@@ -111,7 +111,7 @@ func (t *ToolsManager) ListAvailableTools() []string {
 // GetToolsInfo 获取工具信息
 func (t *ToolsManager) GetToolsInfo() map[string]bool {
 	info := make(map[string]bool)
-	toolNames := []string{"rustscan", "katana", "rad"}
+	toolNames := []string{"gogo", "katana", "rad"}
 	
 	for _, name := range toolNames {
 		info[name] = t.IsToolAvailable(name)

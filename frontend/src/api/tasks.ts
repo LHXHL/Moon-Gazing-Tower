@@ -24,7 +24,6 @@ const transformTask = (task: Record<string, unknown>): Task => {
     config: {
       scanTypes: (config.scan_types as string[]) || [],
       portRange: config.port_range as string,
-      rateLimit: config.port_scan_rate as number,
       timeout: config.timeout as number,
       concurrent: config.concurrent as number,
       enabledPlugins: config.enabled_plugins as string[],
@@ -75,7 +74,6 @@ export interface TaskConfig {
   scanTypes?: string[]   // 兼容旧代码
   port_scan_mode?: string // quick, full, top1000, custom
   portRange?: string
-  rateLimit?: number
   timeout?: number
   concurrent?: number
   enabledPlugins?: string[]
@@ -162,7 +160,6 @@ export const taskApi = {
       scan_types: data.config.scanTypes || data.config.scan_types,
       port_scan_mode: data.config.port_scan_mode,
       port_range: data.config.portRange,
-      port_scan_rate: data.config.rateLimit,  // 前端 rateLimit -> 后端 port_scan_rate
       timeout: data.config.timeout,
       threads: data.config.concurrent,         // 前端 concurrent -> 后端 threads
       poc_ids: data.config.pocIds,

@@ -8,7 +8,7 @@ import (
 
 	"moongazing/models"
 	"moongazing/scanner/core"
-	"moongazing/scanner/fingerprint"
+
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -64,9 +64,9 @@ func (p *ScanPipeline) runPortScan() {
 
 	log.Printf("[Pipeline] Running port scan for %d targets: %v", len(targets), targets)
 
-	// 检查 RustScan 是否可用
-	if !p.rustScanScanner.IsAvailable() {
-		log.Printf("[Pipeline] RustScan not available, skipping port scan")
+	// 检查 GoGo 是否可用
+	if !p.gogoScanner.IsAvailable() {
+		log.Printf("[Pipeline] GoGo not available, skipping port scan")
 		return
 	}
 
@@ -91,25 +91,25 @@ func (p *ScanPipeline) runPortScan() {
 		switch portScanMode {
 		case "full":
 			log.Printf("[Pipeline] Full port scan on %s", target)
-			scanResult, err = p.rustScanScanner.FullScan(ctx, target)
+			scanResult, err = p.gogoScanner.FullScan(ctx, target)
 		case "top1000":
 			log.Printf("[Pipeline] Top1000 port scan on %s", target)
-			scanResult, err = p.rustScanScanner.Top1000Scan(ctx, target)
+			scanResult, err = p.gogoScanner.Top1000Scan(ctx, target)
 		case "custom":
 			customPorts := p.task.Config.PortRange
 			if customPorts == "" {
 				customPorts = "1-1000"
 			}
 			log.Printf("[Pipeline] Custom port scan (%s) on %s", customPorts, target)
-			scanResult, err = p.rustScanScanner.ScanPorts(ctx, target, customPorts)
+			scanResult, err = p.gogoScanner.ScanPorts(ctx, target, customPorts)
 		default:
 			log.Printf("[Pipeline] Quick port scan on %s", target)
-			scanResult, err = p.rustScanScanner.QuickScan(ctx, target)
+			scanResult, err = p.gogoScanner.QuickScan(ctx, target)
 		}
 		cancel()
 
 		if err != nil {
-			log.Printf("[Pipeline] RustScan error on %s: %v", target, err)
+			log.Printf("[Pipeline] GoGo error on %s: %v", target, err)
 			continue
 		}
 
@@ -121,61 +121,86 @@ func (p *ScanPipeline) runPortScan() {
 		for _, port := range scanResult.Ports {
 			if port.State == "open" {
 				portInfo := PortInfo{
-					Host:    target,
-					Port:    port.Port,
-					Service: port.Service,
-					Version: port.Version,
-					Banner:  port.Banner,
+					Host:        target,
+					Port:        port.Port,
+					Service:     port.Service,
+					Version:     port.Version,
+					Banner:      port.Banner,
+					Fingerprint: port.Fingerprint, // GoGo 已经识别的指纹
 				}
 				p.discoveredPorts = append(p.discoveredPorts, portInfo)
 
 				// 保存到数据库
 				p.savePortResult(port, target)
+
+				// 如果是 HTTP 端口，直接添加到资产列表
+				if core.IsHTTPPort(port.Port) {
+					protocol := "http"
+					if port.Port == 443 || port.Port == 8443 {
+						protocol = "https"
+					}
+					url := fmt.Sprintf("%s://%s:%d", protocol, target, port.Port)
+
+					asset := AssetInfo{
+						Host:        target,
+						Port:        port.Port,
+						Protocol:    protocol,
+						URL:         url,
+						Title:       port.Banner, // GoGo 返回的 Title
+						Fingerprint: port.Fingerprint,
+						Server:      port.Version, // GoGo 返回的 Midware
+					}
+					p.discoveredAssets = append(p.discoveredAssets, asset)
+				}
 			}
 		}
 	}
 
-	log.Printf("[Pipeline] Discovered %d open ports", len(p.discoveredPorts))
+	log.Printf("[Pipeline] Discovered %d open ports, %d HTTP assets", len(p.discoveredPorts), len(p.discoveredAssets))
 }
 
-// runFingerprint 执行指纹识别
+// runFingerprint 执行指纹识别（GoGo 已完成基础指纹识别，此函数用于深度 Web 指纹识别）
 func (p *ScanPipeline) runFingerprint() {
-	log.Printf("[Pipeline] Running fingerprint scan")
+	log.Printf("[Pipeline] Running deep fingerprint scan on %d assets", len(p.discoveredAssets))
 
-	// 对发现的 HTTP/HTTPS 端口进行指纹识别
-	for _, port := range p.discoveredPorts {
-		if core.IsHTTPPort(port.Port) {
-			protocol := "http"
-			if port.Port == 443 || port.Port == 8443 {
-				protocol = "https"
-			}
+	// 对发现的 HTTP/HTTPS 端口进行深度指纹识别
+	for i := range p.discoveredAssets {
+		asset := &p.discoveredAssets[i]
 
-			url := fmt.Sprintf("%s://%s:%d", protocol, port.Host, port.Port)
+		ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
+		fpResult := p.fingerprintScanner.ScanFingerprint(ctx, asset.URL)
+		cancel()
 
-			ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
-			fpResult := p.fingerprintScanner.ScanFingerprint(ctx, url)
-			cancel()
-
-			// 更新端口信息
-			fingerprints := make([]string, 0)
+		if fpResult != nil {
+			// 合并指纹信息
 			for _, fp := range fpResult.Fingerprints {
-				fingerprints = append(fingerprints, fp.Name)
-				p.saveFingerprintResult(fp, url)
+				// 避免重复
+				exists := false
+				for _, existing := range asset.Fingerprint {
+					if existing == fp.Name {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					asset.Fingerprint = append(asset.Fingerprint, fp.Name)
+				}
 			}
 
-			// 添加到资产
-			asset := AssetInfo{
-				Host:        port.Host,
-				Port:        port.Port,
-				Protocol:    protocol,
-				URL:         url,
-				Fingerprint: fingerprints,
+			// 更新 Title 和 Server（如果 GoGo 没有获取到）
+			if asset.Title == "" {
+				asset.Title = fpResult.Title
 			}
-			p.discoveredAssets = append(p.discoveredAssets, asset)
+			if asset.Server == "" {
+				asset.Server = fpResult.Server
+			}
+			if asset.StatusCode == 0 {
+				asset.StatusCode = fpResult.StatusCode
+			}
 		}
 	}
 
-	log.Printf("[Pipeline] Discovered %d assets", len(p.discoveredAssets))
+	log.Printf("[Pipeline] Deep fingerprint scan completed")
 }
 
 // runAssetMapping 执行资产测绘
@@ -207,39 +232,16 @@ func (p *ScanPipeline) savePortResult(port core.PortResult, host string) {
 		TaskID:      p.task.ID,
 		WorkspaceID: p.task.WorkspaceID,
 		Type:        models.ResultTypePort,
-		Source:      "pipeline",
+		Source:      "gogo",
 		Data: bson.M{
-			"ip":      host,
-			"host":    host,
-			"port":    port.Port,
-			"service": port.Service,
-			"state":   port.State,
-			"version": port.Version,
-			"banner":  port.Banner,
-		},
-		CreatedAt: time.Now(),
-	}
-
-	p.resultService.CreateResultWithDedup(&result)
-	p.totalResults++
-}
-
-// saveFingerprintResult 保存指纹识别结果
-func (p *ScanPipeline) saveFingerprintResult(fp fingerprint.Fingerprint, target string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	result := models.ScanResult{
-		TaskID:      p.task.ID,
-		WorkspaceID: p.task.WorkspaceID,
-		Type:        models.ResultTypeService,
-		Source:      "pipeline",
-		Data: bson.M{
-			"target":     target,
-			"name":       fp.Name,
-			"version":    fp.Version,
-			"category":   fp.Category,
-			"confidence": fp.Confidence,
+			"ip":          host,
+			"host":        host,
+			"port":        port.Port,
+			"service":     port.Service,
+			"state":       port.State,
+			"version":     port.Version,
+			"banner":      port.Banner,
+			"fingerprint": port.Fingerprint,
 		},
 		CreatedAt: time.Now(),
 	}

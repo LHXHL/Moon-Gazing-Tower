@@ -18,7 +18,7 @@ import (
 )
 
 type ScanHandler struct {
-	rustScanner        *portscan.RustScanScanner
+	gogoScanner        *portscan.GoGoScanner
 	csegmentScanner    *portscan.CSegmentScanner
 	domainScanner      *subdomain.DomainScanner
 	cdnDetector        *subdomain.CDNDetector
@@ -32,7 +32,7 @@ type ScanHandler struct {
 
 func NewScanHandler() *ScanHandler {
 	return &ScanHandler{
-		rustScanner:        portscan.NewRustScanScanner(),
+		gogoScanner:        portscan.NewGoGoScanner(),
 		csegmentScanner:    portscan.NewCSegmentScanner(100),
 		domainScanner:      subdomain.NewDomainScanner(100),
 		cdnDetector:        subdomain.NewCDNDetector(),
@@ -58,9 +58,9 @@ func (h *ScanHandler) QuickPortScan(c *gin.Context) {
 		return
 	}
 
-	// Check if RustScan is available
-	if !h.rustScanner.IsAvailable() {
-		utils.InternalError(c, "RustScan 工具不可用，请先安装")
+	// Check if GoGo is available
+	if !h.gogoScanner.IsAvailable() {
+		utils.InternalError(c, "GoGo 端口扫描器不可用")
 		return
 	}
 
@@ -73,7 +73,7 @@ func (h *ScanHandler) QuickPortScan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	result, err := h.rustScanner.QuickScan(ctx, req.Target)
+	result, err := h.gogoScanner.QuickScan(ctx, req.Target)
 	if err != nil {
 		utils.InternalError(c, "端口扫描失败: "+err.Error())
 		return
@@ -97,9 +97,9 @@ func (h *ScanHandler) CustomPortScan(c *gin.Context) {
 		return
 	}
 
-	// Check if RustScan is available
-	if !h.rustScanner.IsAvailable() {
-		utils.InternalError(c, "RustScan 工具不可用，请先安装")
+	// Check if GoGo is available
+	if !h.gogoScanner.IsAvailable() {
+		utils.InternalError(c, "GoGo 端口扫描器不可用")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *ScanHandler) CustomPortScan(c *gin.Context) {
 
 	// Parse ports
 	if req.Ports != "" {
-		result, err = h.rustScanner.ScanPorts(ctx, req.Target, req.Ports)
+		result, err = h.gogoScanner.ScanPorts(ctx, req.Target, req.Ports)
 	} else if req.StartPort > 0 && req.EndPort > 0 {
 		if req.EndPort < req.StartPort {
 			utils.BadRequest(c, "结束端口必须大于起始端口")
@@ -128,10 +128,10 @@ func (h *ScanHandler) CustomPortScan(c *gin.Context) {
 			return
 		}
 		portRange := strconv.Itoa(req.StartPort) + "-" + strconv.Itoa(req.EndPort)
-		result, err = h.rustScanner.ScanPorts(ctx, req.Target, portRange)
+		result, err = h.gogoScanner.ScanPorts(ctx, req.Target, portRange)
 	} else {
 		// Default to quick scan
-		result, err = h.rustScanner.QuickScan(ctx, req.Target)
+		result, err = h.gogoScanner.QuickScan(ctx, req.Target)
 	}
 
 	if err != nil {
@@ -158,22 +158,17 @@ func (h *ScanHandler) SinglePortScan(c *gin.Context) {
 		return
 	}
 
-	// Check if RustScan is available
-	if !h.rustScanner.IsAvailable() {
-		utils.InternalError(c, "RustScan 工具不可用，请先安装")
+	// Check if GoGo is available
+	if !h.gogoScanner.IsAvailable() {
+		utils.InternalError(c, "GoGo 端口扫描器不可用")
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result, err := h.rustScanner.ScanPorts(ctx, target, portStr)
-	if err != nil {
-		utils.InternalError(c, "端口扫描失败: "+err.Error())
-		return
-	}
+	// Use ScanOne for single port (faster)
+	result := h.gogoScanner.ScanOne(target, portStr)
 	utils.Success(c, gin.H{
 		"target": target,
+		"port":   port,
 		"result": result,
 	})
 }

@@ -15,7 +15,7 @@ import (
 // 接收预处理后的域名，执行端口扫描，输出存活端口
 type PortScanModule struct {
 	BaseModule
-	rustScanner *portscan.RustScanScanner
+	gogoScanner *portscan.GoGoScanner
 	resultChan  chan interface{}
 	portRange   string
 	scanMode    string
@@ -37,7 +37,7 @@ func NewPortScanModule(ctx context.Context, nextModule ModuleRunner, portRange, 
 			nextModule: nextModule,
 			dupChecker: NewDuplicateChecker(),
 		},
-		rustScanner: portscan.NewRustScanScanner(),
+		gogoScanner: portscan.NewGoGoScanner(),
 		resultChan:  make(chan interface{}, 1000),
 		portRange:   portRange,
 		scanMode:    scanMode,
@@ -51,9 +51,9 @@ func (m *PortScanModule) ModuleRun() error {
 	var resultWg sync.WaitGroup
 	var nextModuleRun sync.WaitGroup
 
-	// 检查 RustScan 是否可用
-	if !m.rustScanner.IsAvailable() {
-		log.Printf("[%s] RustScan not available, skipping port scan", m.name)
+	// 检查 GoGo 是否可用
+	if !m.gogoScanner.IsAvailable() {
+		log.Printf("[%s] GoGo not available, skipping port scan", m.name)
 		// 直接关闭下一个模块
 		if m.nextModule != nil {
 			m.nextModule.CloseInput()
@@ -180,17 +180,17 @@ func (m *PortScanModule) scanPorts(ds DomainSkip) {
 	// 根据扫描模式选择扫描方式
 	switch m.scanMode {
 	case "full":
-		scanResult, err = m.rustScanner.FullScan(ctx, ds.Domain)
+		scanResult, err = m.gogoScanner.FullScan(ctx, ds.Domain)
 	case "top1000":
-		scanResult, err = m.rustScanner.Top1000Scan(ctx, ds.Domain)
+		scanResult, err = m.gogoScanner.Top1000Scan(ctx, ds.Domain)
 	case "custom":
-		scanResult, err = m.rustScanner.ScanPorts(ctx, ds.Domain, m.portRange)
+		scanResult, err = m.gogoScanner.ScanPorts(ctx, ds.Domain, m.portRange)
 	default: // quick
-		scanResult, err = m.rustScanner.QuickScan(ctx, ds.Domain)
+		scanResult, err = m.gogoScanner.QuickScan(ctx, ds.Domain)
 	}
 
 	if err != nil {
-		log.Printf("[%s] RustScan error for %s: %v", m.name, ds.Domain, err)
+		log.Printf("[%s] GoGo error for %s: %v", m.name, ds.Domain, err)
 		return
 	}
 

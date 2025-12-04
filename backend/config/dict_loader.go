@@ -121,27 +121,29 @@ func LoadDictConfig() *DictConfig {
 	dictConfigOnce.Do(func() {
 		dictConfig = &DictConfig{}
 		basePath := GetDictBasePath()
+		txtPath := filepath.Join(basePath, "txt")
+		yamlPath := filepath.Join(basePath, "yaml")
 
 		// Load subdomains
-		dictConfig.Subdomains = loadTextList(filepath.Join(basePath, "subdomains.txt"))
+		dictConfig.Subdomains = loadTextList(filepath.Join(txtPath, "subdomains.txt"))
 
 		// Load directories
-		dictConfig.Directories = loadTextList(filepath.Join(basePath, "directories.txt"))
+		dictConfig.Directories = loadTextList(filepath.Join(txtPath, "directories.txt"))
 
 		// Load fingerprints
-		dictConfig.Fingerprints = loadFingerprintConfig(filepath.Join(basePath, "fingerprints.yaml"))
+		dictConfig.Fingerprints = loadFingerprintConfig(filepath.Join(yamlPath, "fingerprints.yaml"))
 
 		// Load CDN config
-		dictConfig.CDN = loadCDNConfig(filepath.Join(basePath, "cdn.yaml"))
+		dictConfig.CDN = loadCDNConfig(filepath.Join(yamlPath, "cdn.yaml"))
 
 		// Load vuln config
-		dictConfig.Vuln = loadVulnConfig(filepath.Join(basePath, "vuln.yaml"))
+		dictConfig.Vuln = loadVulnConfig(filepath.Join(yamlPath, "vuln.yaml"))
 
 		// Load ports config
-		dictConfig.Ports = loadPortsConfig(filepath.Join(basePath, "ports.yaml"))
+		dictConfig.Ports = loadPortsConfig(filepath.Join(yamlPath, "ports.yaml"))
 
 		// Load favicon hashes
-		dictConfig.FaviconHashes = loadFaviconHashConfig(filepath.Join(basePath, "favicon_hashes.yaml"))
+		dictConfig.FaviconHashes = loadFaviconHashConfig(filepath.Join(yamlPath, "favicon_hashes.yaml"))
 	})
 
 	return dictConfig
@@ -225,40 +227,11 @@ func loadPortsConfig(filePath string) *PortsConfig {
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		// 返回默认配置
-		return getDefaultPortsConfig()
+		return config
 	}
 
-	if err := yaml.Unmarshal(data, config); err != nil {
-		return getDefaultPortsConfig()
-	}
-
-	// 如果配置为空，使用默认值
-	if len(config.CommonPorts) == 0 {
-		return getDefaultPortsConfig()
-	}
-
+	yaml.Unmarshal(data, config)
 	return config
-}
-
-// getDefaultPortsConfig returns default port configuration
-func getDefaultPortsConfig() *PortsConfig {
-	return &PortsConfig{
-		CommonPorts: []int{21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995,
-			1433, 1521, 2049, 3306, 3389, 5432, 5900, 6379, 8080, 8443, 9000, 27017},
-		TopPorts: []int{21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995,
-			1433, 1521, 3306, 3389, 5432, 5900, 6379, 8080, 8443, 27017},
-		PortServiceMap: map[int]string{
-			21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns", 80: "http",
-			110: "pop3", 111: "rpcbind", 135: "msrpc", 139: "netbios-ssn", 143: "imap",
-			443: "https", 445: "microsoft-ds", 993: "imaps", 995: "pop3s",
-			1433: "mssql", 1521: "oracle", 2049: "nfs", 3306: "mysql", 3389: "rdp",
-			5432: "postgresql", 5900: "vnc", 6379: "redis", 8080: "http-proxy",
-			8443: "https-alt", 9000: "cslistener", 27017: "mongodb",
-		},
-		HTTPPorts:    []int{80, 443, 8080, 8443, 8000, 8008, 8081, 8088, 8888, 9000, 9090},
-		NonHTTPPorts: []int{21, 22, 23, 25, 53, 110, 139, 143, 445, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 6379, 27017},
-	}
 }
 
 // loadFaviconHashConfig loads favicon hash configuration from YAML
@@ -350,10 +323,10 @@ func GetSensitivePaths() []SensitivePathConfig {
 // GetBackupExtensions returns backup file extensions
 func GetBackupExtensions() []string {
 	vulnConfig := GetVulnConfig()
-	if vulnConfig != nil && len(vulnConfig.BackupExtensions) > 0 {
+	if vulnConfig != nil {
 		return vulnConfig.BackupExtensions
 	}
-	return []string{".bak", ".backup", ".old", ".sql", ".zip", ".tar.gz"}
+	return nil
 }
 
 // GetPortsConfig returns port configuration
@@ -364,46 +337,46 @@ func GetPortsConfig() *PortsConfig {
 // GetCommonPorts returns common port list
 func GetCommonPorts() []int {
 	portsConfig := GetPortsConfig()
-	if portsConfig != nil && len(portsConfig.CommonPorts) > 0 {
+	if portsConfig != nil {
 		return portsConfig.CommonPorts
 	}
-	return getDefaultPortsConfig().CommonPorts
+	return nil
 }
 
 // GetTopPorts returns top port list
 func GetTopPorts() []int {
 	portsConfig := GetPortsConfig()
-	if portsConfig != nil && len(portsConfig.TopPorts) > 0 {
+	if portsConfig != nil {
 		return portsConfig.TopPorts
 	}
-	return getDefaultPortsConfig().TopPorts
+	return nil
 }
 
 // GetPortServiceMap returns port to service name mapping
 func GetPortServiceMap() map[int]string {
 	portsConfig := GetPortsConfig()
-	if portsConfig != nil && len(portsConfig.PortServiceMap) > 0 {
+	if portsConfig != nil {
 		return portsConfig.PortServiceMap
 	}
-	return getDefaultPortsConfig().PortServiceMap
+	return nil
 }
 
 // GetHTTPPorts returns ports that typically run HTTP services
 func GetHTTPPorts() []int {
 	portsConfig := GetPortsConfig()
-	if portsConfig != nil && len(portsConfig.HTTPPorts) > 0 {
+	if portsConfig != nil {
 		return portsConfig.HTTPPorts
 	}
-	return getDefaultPortsConfig().HTTPPorts
+	return nil
 }
 
 // GetNonHTTPPorts returns ports that are definitely not HTTP
 func GetNonHTTPPorts() []int {
 	portsConfig := GetPortsConfig()
-	if portsConfig != nil && len(portsConfig.NonHTTPPorts) > 0 {
+	if portsConfig != nil {
 		return portsConfig.NonHTTPPorts
 	}
-	return getDefaultPortsConfig().NonHTTPPorts
+	return nil
 }
 
 // IsHTTPPort checks if a port is likely to be HTTP

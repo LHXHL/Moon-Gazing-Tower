@@ -83,7 +83,6 @@ type TaskConfig struct {
 	// Port Scan Config
 	PortScanMode  string `json:"port_scan_mode,omitempty" bson:"port_scan_mode,omitempty"` // quick, full, top1000, custom
 	PortRange     string `json:"port_range,omitempty" bson:"port_range,omitempty"` // e.g., "1-1000", "top100"
-	PortScanRate  int    `json:"port_scan_rate,omitempty" bson:"port_scan_rate,omitempty"`
 	
 	// Subdomain Config
 	SubdomainDict string `json:"subdomain_dict,omitempty" bson:"subdomain_dict,omitempty"`

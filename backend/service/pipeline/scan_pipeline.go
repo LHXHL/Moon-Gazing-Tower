@@ -27,9 +27,8 @@ type ScanPipeline struct {
 
 	// 扫描器
 	domainScanner      *subdomain.DomainScanner
-	subfinderScanner   *subdomain.SubfinderScanner
 	httpxScanner       *webscan.HttpxScanner
-	rustScanScanner    *portscan.RustScanScanner
+	gogoScanner        *portscan.GoGoScanner
 	katanaScanner      *webscan.KatanaScanner
 	radScanner         *webscan.RadScanner
 	fingerprintScanner *fingerprint.FingerprintScanner
@@ -67,11 +66,12 @@ type SubdomainInfo struct {
 
 // PortInfo 端口信息
 type PortInfo struct {
-	Host    string
-	Port    int
-	Service string
-	Version string
-	Banner  string
+	Host        string
+	Port        int
+	Service     string
+	Version     string
+	Banner      string
+	Fingerprint []string // GoGo 识别的指纹
 }
 
 // AssetInfo 资产信息
@@ -117,9 +117,8 @@ func NewScanPipeline(task *models.Task, taskService TaskService, resultService R
 		taskService:        taskService,
 		resultService:      resultService,
 		domainScanner:      subdomain.NewDomainScanner(10),
-		subfinderScanner:   subdomain.NewSubfinderScanner(),
 		httpxScanner:       webscan.NewHttpxScanner(10),
-		rustScanScanner:    portscan.NewRustScanScanner(),
+		gogoScanner:        portscan.NewGoGoScanner(),
 		katanaScanner:      webscan.NewKatanaScanner(),
 		radScanner:         webscan.NewRadScanner(),
 		fingerprintScanner: fingerprint.NewFingerprintScanner(10),

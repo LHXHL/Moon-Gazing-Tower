@@ -28,8 +28,8 @@ Moon-Gazing-Tower (望月塔) 是一款现代化的自动化安全扫描平台�
 
 ### 🛠️ 扫描能力集成
 平台集成了多款业界优秀的开源安全工具：
-- **子域名枚举**：集成 [subfinder](https://github.com/projectdiscovery/subfinder)
-- **端口扫描**：集成 [rustscan](https://github.com/RustScan/RustScan)
+- **子域名枚举**：集成 [ksubdomain](https://github.com/boy-hack/ksubdomain)
+- **端口扫描**：集成 [gogo](https://github.com/chainreactors/gogo)
 - **Web 爬虫**：集成 [katana](https://github.com/projectdiscovery/katana)、[rad](https://github.com/chaitin/rad)
 - **漏洞扫描**：集成 [Nuclei](https://github.com/projectdiscovery/nuclei)
 - **指纹识别**：内置指纹库

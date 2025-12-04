@@ -62,7 +62,6 @@ export default function TaskCreatePage() {
       scanTypes: ['port_scan', 'service_detect'],
       port_scan_mode: 'quick',
       portRange: '1-65535',
-      rateLimit: 1000,
       timeout: 30,
       concurrent: 10,
       // 第三方 API 配置
@@ -271,20 +270,6 @@ export default function TaskCreatePage() {
                     />
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label>速率限制</Label>
-                  <Input
-                    type="number"
-                    placeholder="1000"
-                    value={formData.config.rateLimit || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        config: { ...formData.config, rateLimit: Number(e.target.value) },
-                      })
-                    }
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label>超时时间 (秒)</Label>
                   <Input
