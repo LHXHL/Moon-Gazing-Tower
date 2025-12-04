@@ -34,3 +34,10 @@ debug/
 # Coverage
 coverage/
 *.out
+
+# Root directory (shouldn't have these)
+/node_modules/
+/package-lock.json
+
+# Claude Code
+.claude/
