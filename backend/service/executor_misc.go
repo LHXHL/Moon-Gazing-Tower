@@ -105,9 +105,9 @@ func (e *TaskExecutor) executeVulnScan(task *models.Task) {
 	e.completeTask(task, len(results))
 }
 
-// executeContentScan 执行目录扫描
+// executeContentScan 执行目录扫描 (使用 Spray)
 func (e *TaskExecutor) executeContentScan(task *models.Task) {
-	log.Printf("[TaskExecutor] Executing content scan for task: %s", task.ID.Hex())
+	log.Printf("[TaskExecutor] Executing content scan with Spray for task: %s", task.ID.Hex())
 
 	targets := task.Targets
 	if len(targets) == 0 {
@@ -115,30 +115,43 @@ func (e *TaskExecutor) executeContentScan(task *models.Task) {
 		return
 	}
 
+	sprayScanner := webscan.NewSprayScanner()
+	if sprayScanner == nil || !sprayScanner.IsAvailable() {
+		e.failTask(task, "Spray 扫描器不可用")
+		return
+	}
 
 	results := make([]models.ScanResult, 0)
-	contentScanner := webscan.NewContentScanner(20)
 
 	for i, target := range targets {
 		progress := int((float64(i) / float64(len(targets))) * 100)
 		e.updateProgress(task, progress)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		dirResult := contentScanner.QuickDirScan(ctx, target)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		sprayResult, err := sprayScanner.Scan(ctx, target)
 		cancel()
 
-		for _, entry := range dirResult.Results {
+		if err != nil {
+			log.Printf("[TaskExecutor] Spray scan error for %s: %v", target, err)
+			continue
+		}
+
+		if sprayResult == nil {
+			continue
+		}
+
+		for _, entry := range sprayResult.Results {
 			result := models.ScanResult{
 				TaskID:      task.ID,
 				WorkspaceID: task.WorkspaceID,
 				Type:        models.ResultTypeDirScan,
-				Source:      "主动扫描",
+				Source:      "spray",
 				Data: bson.M{
 					"target":       target,
 					"url":          entry.URL,
 					"path":         entry.Path,
 					"status":       entry.StatusCode,
-					"size":         entry.ContentLength,
+					"size":         entry.BodyLength,
 					"content_type": entry.ContentType,
 					"title":        entry.Title,
 				},

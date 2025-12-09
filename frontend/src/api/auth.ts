@@ -32,6 +32,14 @@ export const authApi = {
       old_password: data.oldPassword,
       new_password: data.newPassword,
     }),
+
+  updateProfile: (data: {
+    email?: string
+    nickname?: string
+    phone?: string
+    avatar?: string
+  }): Promise<ApiResponse<User>> =>
+    api.put('/auth/profile', data),
 }
 
 // Backend response format for users

@@ -66,6 +66,9 @@ export default function PluginsPage() {
       toast({ title: '更新成功' })
       queryClient.invalidateQueries({ queryKey: ['plugins'] })
     },
+    onError: () => {
+      toast({ title: '更新失败', variant: 'destructive' })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -73,6 +76,9 @@ export default function PluginsPage() {
     onSuccess: () => {
       toast({ title: '删除成功' })
       queryClient.invalidateQueries({ queryKey: ['plugins'] })
+    },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
     },
   })
 

@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// ContentScanner handles content scanning (directory brute, sensitive info, crawler)
+// ContentScanner handles content scanning (sensitive info, crawler)
 // 该扫描器的具体功能已拆分到以下文件：
-//   - dir_scanner.go: 目录扫描 (DirBrute, QuickDirScan)
 //   - sensitive_scanner.go: 敏感信息扫描 (ScanSensitiveInfo, BatchScanSensitive)
 //   - crawler.go: Web 爬虫 (WebCrawler)
+//   - spray.go: 目录扫描 (SprayScanner) - 使用 chainreactors/spray 工具
 type ContentScanner struct {
 	Timeout        time.Duration
 	HTTPClient     *http.Client
@@ -51,8 +51,8 @@ func NewContentScanner(concurrency int) *ContentScanner {
 		},
 		Concurrency:    concurrency,
 		UserAgent:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-		Wordlist:       getWordlistFromConfig(),
-		Extensions:     getExtensionsFromConfig(),
+		Wordlist:       []string{},
+		Extensions:     []string{},
 		FollowRedirect: true, // 默认跟随重定向
 		MaxRedirects:   5,    // 最大5次重定向
 		Filter:         core.NewResponseFilter(core.DefaultFilterConfig()),

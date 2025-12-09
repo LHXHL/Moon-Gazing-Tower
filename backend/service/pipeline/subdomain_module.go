@@ -10,18 +10,21 @@ import (
 	"moongazing/scanner/core"
 	"moongazing/scanner/subdomain"
 	"moongazing/scanner/subdomain/thirdparty"
+	"moongazing/scanner/webscan"
 )
 
 // SubdomainScanModule 子域名扫描模块
 // 使用综合扫描器：主动枚举（字典爆破）为主，第三方API为辅
 type SubdomainScanModule struct {
 	BaseModule
-	activeScanner *subdomain.ActiveScanner
-	resultChan    chan interface{}
-	config        *subdomain.ActiveScannerConfig
-	apiConfig     *thirdparty.APIConfig
-	resolveIP     bool
-	dnsResolvers  []string
+	activeScanner   *subdomain.ActiveScanner
+	httpxScanner    *webscan.HttpxScanner  // HTTP 探测器
+	resultChan      chan interface{}
+	config          *subdomain.ActiveScannerConfig
+	apiConfig       *thirdparty.APIConfig
+	resolveIP       bool
+	enableHTTPProbe bool  // 是否进行 HTTP 探测
+	dnsResolvers    []string
 }
 
 // SubdomainScanConfig 子域名扫描配置
@@ -47,6 +50,7 @@ type SubdomainScanConfig struct {
 	// 其他
 	ResolveIP        bool // 是否解析IP (默认 true)
 	VerifySubdomains bool // 是否验证子域名存活 (默认 true)
+	EnableHTTPProbe  bool // 是否进行HTTP探测获取标题、状态码等 (默认 false)
 }
 
 // DefaultSubdomainScanConfig 默认配置
@@ -69,6 +73,14 @@ func NewSubdomainScanModule(ctx context.Context, nextModule ModuleRunner, maxEnu
 	// 兼容旧接口，使用默认配置
 	cfg := DefaultSubdomainScanConfig()
 	cfg.ResolveIP = resolveIP
+	return NewSubdomainScanModuleWithConfig(ctx, nextModule, cfg)
+}
+
+// NewSubdomainScanModuleWithHTTPProbe 创建子域名扫描模块（启用 HTTP 探测）
+func NewSubdomainScanModuleWithHTTPProbe(ctx context.Context, nextModule ModuleRunner, maxEnumTime int, resolveIP bool, enableHTTPProbe bool) *SubdomainScanModule {
+	cfg := DefaultSubdomainScanConfig()
+	cfg.ResolveIP = resolveIP
+	cfg.EnableHTTPProbe = enableHTTPProbe
 	return NewSubdomainScanModuleWithConfig(ctx, nextModule, cfg)
 }
 
@@ -102,6 +114,12 @@ func NewSubdomainScanModuleWithConfig(ctx context.Context, nextModule ModuleRunn
 		SecurityTrailsKey: scanConfig.SecurityTrailsKey,
 	}
 
+	// 创建 httpx 扫描器（如果启用 HTTP 探测）
+	var httpxScanner *webscan.HttpxScanner
+	if scanConfig.EnableHTTPProbe {
+		httpxScanner = webscan.NewHttpxScanner(30) // 30 并发
+	}
+
 	m := &SubdomainScanModule{
 		BaseModule: BaseModule{
 			name:       "SubdomainScan",
@@ -109,11 +127,13 @@ func NewSubdomainScanModuleWithConfig(ctx context.Context, nextModule ModuleRunn
 			nextModule: nextModule,
 			dupChecker: NewDuplicateChecker(),
 		},
-		activeScanner: subdomain.NewActiveScanner(activeCfg, apiCfg),
-		resultChan:    make(chan interface{}, 2000), // 增大缓冲区
-		config:        activeCfg,
-		apiConfig:     apiCfg,
-		resolveIP:     scanConfig.ResolveIP,
+		activeScanner:   subdomain.NewActiveScanner(activeCfg, apiCfg),
+		httpxScanner:    httpxScanner,
+		resultChan:      make(chan interface{}, 2000), // 增大缓冲区
+		config:          activeCfg,
+		apiConfig:       apiCfg,
+		resolveIP:       scanConfig.ResolveIP,
+		enableHTTPProbe: scanConfig.EnableHTTPProbe,
 		dnsResolvers: []string{
 			"8.8.8.8:53",
 			"1.1.1.1:53",
@@ -131,6 +151,10 @@ func (m *SubdomainScanModule) ModuleRun() error {
 	var resultWg sync.WaitGroup
 	var nextModuleRun sync.WaitGroup
 
+	// 报告模块开始
+	m.ReportModuleStart(0)
+	defer m.ReportModuleComplete()
+
 	// 启动下一个模块
 	if m.nextModule != nil {
 		nextModuleRun.Add(1)
@@ -147,6 +171,8 @@ func (m *SubdomainScanModule) ModuleRun() error {
 	go func() {
 		defer resultWg.Done()
 		for result := range m.resultChan {
+			// 报告输出
+			m.ReportOutput(1)
 			// 发送到下一个模块
 			if m.nextModule != nil {
 				select {
@@ -164,6 +190,7 @@ func (m *SubdomainScanModule) ModuleRun() error {
 	}()
 
 	// 处理输入
+	var processedCount int
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -183,6 +210,10 @@ func (m *SubdomainScanModule) ModuleRun() error {
 				nextModuleRun.Wait()
 				return nil
 			}
+
+			processedCount++
+			// 报告进度
+			m.ReportProgress(1, 0)
 
 			// 处理字符串类型的主域名
 			domain, ok := data.(string)
@@ -208,8 +239,12 @@ func (m *SubdomainScanModule) ModuleRun() error {
 // scanSubdomains 执行子域名扫描（使用综合扫描器）
 func (m *SubdomainScanModule) scanSubdomains(domain string) {
 	log.Printf("[%s] Starting comprehensive subdomain scan for %s", m.name, domain)
-	log.Printf("[%s] Brute enabled: %v, API enabled: %v, Sources: %v",
-		m.name, m.config.EnableBrute, m.config.EnableAPI, m.config.APISources)
+	log.Printf("[%s] Brute enabled: %v, API enabled: %v, Sources: %v, HTTPProbe: %v",
+		m.name, m.config.EnableBrute, m.config.EnableAPI, m.config.APISources, m.enableHTTPProbe)
+
+	// 收集所有子域名，如果启用了 HTTP 探测，需要批量处理
+	var collectedSubdomains []string
+	var collectedResults []SubdomainResult
 
 	// 使用回调函数实时处理结果
 	err := m.activeScanner.ScanWithCallback(m.ctx, domain, func(subResult subdomain.SubdomainResult) {
@@ -219,9 +254,11 @@ func (m *SubdomainScanModule) scanSubdomains(domain string) {
 		}
 
 		result := SubdomainResult{
-			Domain: subResult.FullDomain,
-			Source: "active", // 综合扫描
-			IPs:    subResult.IPs,
+			Host:       subResult.FullDomain, // 子域名完整名称
+			Domain:     domain,               // 根域名
+			RootDomain: domain,               // 根域名
+			Source:     "active",             // 综合扫描
+			IPs:        subResult.IPs,
 		}
 
 		// 如果没有 IP 且需要解析
@@ -231,15 +268,61 @@ func (m *SubdomainScanModule) scanSubdomains(domain string) {
 
 		log.Printf("[%s] Found subdomain: %s (IPs: %v)", m.name, subResult.FullDomain, result.IPs)
 
-		select {
-		case <-m.ctx.Done():
-			return
-		case m.resultChan <- result:
+		if m.enableHTTPProbe && m.httpxScanner != nil {
+			// 如果启用了 HTTP 探测，先收集起来
+			collectedSubdomains = append(collectedSubdomains, subResult.FullDomain)
+			collectedResults = append(collectedResults, result)
+		} else {
+			// 否则直接发送结果
+			select {
+			case <-m.ctx.Done():
+				return
+			case m.resultChan <- result:
+			}
 		}
 	})
 
 	if err != nil {
 		log.Printf("[%s] Scan error for %s: %v", m.name, domain, err)
+	}
+
+	// 如果启用了 HTTP 探测，批量进行探测
+	if m.enableHTTPProbe && m.httpxScanner != nil && len(collectedSubdomains) > 0 {
+		log.Printf("[%s] Starting HTTP probe for %d subdomains", m.name, len(collectedSubdomains))
+		
+		ctx2, cancel2 := context.WithTimeout(m.ctx, 15*time.Minute)
+		httpxResults := m.httpxScanner.EnrichSubdomains(ctx2, collectedSubdomains)
+		cancel2()
+		
+		log.Printf("[%s] HTTP probe completed, got %d results", m.name, len(httpxResults))
+
+		// 创建 httpx 结果映射
+		httpxMap := make(map[string]*webscan.HttpxResult)
+		for _, hr := range httpxResults {
+			httpxMap[hr.Host] = hr
+		}
+
+		// 丰富子域名结果并发送
+		for _, result := range collectedResults {
+			if hr, ok := httpxMap[result.Host]; ok {
+				// 丰富结果数据
+				result.IPs = hr.IPs
+				result.Title = hr.Title
+				result.StatusCode = hr.StatusCode
+				result.WebServer = hr.WebServer
+				result.Technologies = hr.Technologies
+				result.CDN = hr.CDN
+				result.CDNName = hr.CDNName
+				result.URL = hr.URL
+				result.Source = "httpx"
+			}
+			
+			select {
+			case <-m.ctx.Done():
+				return
+			case m.resultChan <- result:
+			}
+		}
 	}
 
 	log.Printf("[%s] Subdomain scan completed for %s", m.name, domain)
@@ -389,17 +472,23 @@ func (m *DomainVerifyModule) checkSubdomain(sr SubdomainResult) {
 	case m.resultChan <- sr:
 	}
 
+	// 获取子域名（使用 Host 字段）
+	subdomain := sr.Host
+	if subdomain == "" {
+		subdomain = sr.Domain // 兼容旧数据
+	}
+
 	// 解析 DNS 获取更多信息
 	ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 
 	// 使用 DomainScanner 检查子域名
-	rootDomain := core.ExtractRootDomain(sr.Domain)
-	checkResult := m.domainScanner.CheckSubdomain(ctx, sr.Domain, rootDomain)
+	rootDomain := core.ExtractRootDomain(subdomain)
+	checkResult := m.domainScanner.CheckSubdomain(ctx, subdomain, rootDomain)
 
 	// 构建 DomainResolve 结果
 	result := DomainResolve{
-		Domain: sr.Domain,
+		Domain: subdomain,
 		IP:     sr.IPs,
 	}
 
@@ -412,7 +501,7 @@ func (m *DomainVerifyModule) checkSubdomain(sr SubdomainResult) {
 		// 记录存活状态和 HTTP 信息
 		if checkResult.Alive {
 			log.Printf("[%s] %s is alive (HTTP: %d, HTTPS: %d)",
-				m.name, sr.Domain, checkResult.HTTPStatus, checkResult.HTTPSStatus)
+				m.name, subdomain, checkResult.HTTPStatus, checkResult.HTTPSStatus)
 		}
 	}
 

@@ -41,7 +41,27 @@ func (h *ResultHandler) GetTaskResults(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessWithPagination(c, results, total, page, pageSize)
+	// 扁平化结果数据，将 Data 字段中的内容提升到顶层
+	flatResults := make([]map[string]interface{}, len(results))
+	for i, r := range results {
+		flat := map[string]interface{}{
+			"id":         r.ID.Hex(),
+			"task_id":    r.TaskID.Hex(),
+			"type":       r.Type,
+			"tags":       r.Tags,
+			"project":    r.Project,
+			"source":     r.Source,
+			"createdAt":  r.CreatedAt,
+			"updatedAt":  r.UpdatedAt,
+		}
+		// 将 Data 中的字段提升到顶层
+		for k, v := range r.Data {
+			flat[k] = v
+		}
+		flatResults[i] = flat
+	}
+
+	utils.SuccessWithPagination(c, flatResults, total, page, pageSize)
 }
 
 // GetTaskResultStats 获取任务结果统计
@@ -72,6 +92,29 @@ func (h *ResultHandler) GetSubdomainResults(c *gin.Context) {
 	}
 
 	results, total, err := h.resultService.GetSubdomainResults(taskID, page, pageSize, search)
+	if err != nil {
+		utils.Error(c, 500, "获取结果失败: "+err.Error())
+		return
+	}
+
+	utils.SuccessWithPagination(c, results, total, page, pageSize)
+}
+
+// GetPortResults 获取聚合后的端口结果
+func (h *ResultHandler) GetPortResults(c *gin.Context) {
+	taskID := c.Param("id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	search := c.Query("search")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	results, total, err := h.resultService.GetPortResultsAggregated(taskID, page, pageSize, search)
 	if err != nil {
 		utils.Error(c, 500, "获取结果失败: "+err.Error())
 		return

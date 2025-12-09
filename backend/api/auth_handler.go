@@ -1,6 +1,8 @@
 package api
 
 import (
+	"strings"
+
 	"moongazing/service"
 	"moongazing/utils"
 
@@ -78,8 +80,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // Logout handles user logout
 // POST /api/auth/logout
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// In a more complete implementation, you might want to
-	// blacklist the token in Redis
+	// Get token from header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			token := parts[1]
+			// Blacklist the token in Redis
+			if err := h.userService.BlacklistToken(token); err != nil {
+				// Log error but don't fail logout
+				c.Set("logout_warning", "token blacklist failed")
+			}
+		}
+	}
 	utils.SuccessWithMessage(c, "登出成功", nil)
 }
 
@@ -99,6 +112,7 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		"username":   user.Username,
 		"email":      user.Email,
 		"phone":      user.Phone,
+		"nickname":   user.Nickname,
 		"role":       user.Role,
 		"avatar":     user.Avatar,
 		"last_login": user.LastLogin,
@@ -112,9 +126,10 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	
 	var req struct {
-		Email  string `json:"email"`
-		Phone  string `json:"phone"`
-		Avatar string `json:"avatar"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Avatar   string `json:"avatar"`
+		Nickname string `json:"nickname"`
 	}
 	
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,6 +146,9 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	}
 	if req.Avatar != "" {
 		updates["avatar"] = req.Avatar
+	}
+	if req.Nickname != "" {
+		updates["nickname"] = req.Nickname
 	}
 	
 	if err := h.userService.UpdateUser(userID.(string), updates); err != nil {

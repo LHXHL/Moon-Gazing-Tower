@@ -119,6 +119,9 @@ export default function MonitorPage() {
       toast({ title: '删除成功' })
       queryClient.invalidateQueries({ queryKey: ['monitor-pages'] })
     },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
+    },
   })
 
   // 切换启用状态
@@ -127,6 +130,9 @@ export default function MonitorPage() {
       monitorApi.togglePage(id, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitor-pages'] })
+    },
+    onError: () => {
+      toast({ title: '状态切换失败', variant: 'destructive' })
     },
   })
 
@@ -152,6 +158,9 @@ export default function MonitorPage() {
     onSuccess: () => {
       toast({ title: '已确认' })
       queryClient.invalidateQueries({ queryKey: ['monitor-changes'] })
+    },
+    onError: () => {
+      toast({ title: '确认失败', variant: 'destructive' })
     },
   })
 

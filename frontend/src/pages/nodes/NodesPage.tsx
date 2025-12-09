@@ -1,13 +1,28 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { nodeApi } from '@/api/nodes'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/use-toast'
 import { cn, getStatusColor } from '@/lib/utils'
-import { RefreshCw, HardDrive, Cpu, Database } from 'lucide-react'
+import { RefreshCw, HardDrive, Cpu, Database, Trash2, Settings } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 export default function NodesPage() {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['nodes'],
     queryFn: () => nodeApi.getNodes({ pageSize: 100 }),
@@ -17,6 +32,18 @@ export default function NodesPage() {
   const { data: statsData } = useQuery({
     queryKey: ['node-stats'],
     queryFn: () => nodeApi.getNodeStats(),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: nodeApi.deleteNode,
+    onSuccess: () => {
+      toast({ title: '节点已删除' })
+      queryClient.invalidateQueries({ queryKey: ['nodes'] })
+      queryClient.invalidateQueries({ queryKey: ['node-stats'] })
+    },
+    onError: () => {
+      toast({ title: '删除节点失败', variant: 'destructive' })
+    },
   })
 
   const nodes = data?.data?.list || []
@@ -169,6 +196,43 @@ export default function NodesPage() {
                     </div>
                   </div>
                 )}
+                
+                {/* 操作按钮 */}
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button variant="outline" size="sm" className="flex-1">
+                    <Settings className="h-4 w-4 mr-1" />
+                    配置
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-destructive hover:text-destructive"
+                        disabled={node.status === 'online' && node.currentTasks > 0}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>确认删除节点？</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          确定要删除节点 "{node.name}" 吗？此操作不可撤销。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => deleteMutation.mutate(node.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          删除
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </CardContent>
             </Card>
           ))

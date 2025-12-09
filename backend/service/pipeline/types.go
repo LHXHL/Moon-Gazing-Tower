@@ -8,15 +8,23 @@ import "time"
 // SubdomainResult 子域名扫描结果
 // 由子域名扫描模块输出，传递给子域名安全检测模块
 type SubdomainResult struct {
-	Host       string   `json:"host"`        // 子域名
-	Domain     string   `json:"domain"`      // 根域名
-	IPs        []string `json:"ips"`         // 解析的IP地址列表
-	CNAMEs     []string `json:"cnames"`      // CNAME记录
-	Type       string   `json:"type"`        // 记录类型: A, AAAA, CNAME
-	Source     string   `json:"source"`      // 来源: fofa, hunter, ksubdomain
-	TaskID     string   `json:"task_id"`     // 任务ID
-	TaskName   string   `json:"task_name"`   // 任务名称
-	RootDomain string   `json:"root_domain"` // 根域名
+	Host         string   `json:"host"`         // 子域名
+	Domain       string   `json:"domain"`       // 根域名
+	IPs          []string `json:"ips"`          // 解析的IP地址列表
+	CNAMEs       []string `json:"cnames"`       // CNAME记录
+	Type         string   `json:"type"`         // 记录类型: A, AAAA, CNAME
+	Source       string   `json:"source"`       // 来源: fofa, hunter, ksubdomain, httpx
+	TaskID       string   `json:"task_id"`      // 任务ID
+	TaskName     string   `json:"task_name"`    // 任务名称
+	RootDomain   string   `json:"root_domain"`  // 根域名
+	// HTTP 探测结果
+	Title        string   `json:"title"`        // 页面标题
+	StatusCode   int      `json:"status_code"`  // HTTP 状态码
+	WebServer    string   `json:"web_server"`   // Web 服务器
+	Technologies []string `json:"technologies"` // 技术栈/指纹
+	CDN          bool     `json:"cdn"`          // 是否为 CDN
+	CDNName      string   `json:"cdn_name"`     // CDN 名称
+	URL          string   `json:"url"`          // 完整 URL
 }
 
 // DomainResolve 域名解析结果

@@ -95,6 +95,27 @@ export default function SettingsPage() {
     })
   }
 
+  const updateProfileMutation = useMutation({
+    mutationFn: authApi.updateProfile,
+    onSuccess: () => {
+      toast({ title: '个人信息更新成功' })
+    },
+    onError: () => {
+      toast({ title: '个人信息更新失败', variant: 'destructive' })
+    },
+  })
+
+  const handleSaveProfile = () => {
+    if (!profileForm.email && !profileForm.nickname) {
+      toast({ title: '请填写至少一项', variant: 'destructive' })
+      return
+    }
+    updateProfileMutation.mutate({
+      email: profileForm.email || undefined,
+      nickname: profileForm.nickname || undefined,
+    })
+  }
+
   const handleSaveApiConfig = () => {
     // 只提交非空字段
     const configToUpdate: Partial<ThirdPartyConfig> = {}
@@ -209,7 +230,12 @@ export default function SettingsPage() {
                   placeholder="邮箱"
                 />
               </div>
-              <Button>保存修改</Button>
+              <Button 
+                onClick={handleSaveProfile}
+                disabled={updateProfileMutation.isPending}
+              >
+                {updateProfileMutation.isPending ? '保存中...' : '保存修改'}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

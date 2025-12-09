@@ -45,6 +45,10 @@ func (m *FingerprintModule) ModuleRun() error {
 	var resultWg sync.WaitGroup
 	var nextModuleRun sync.WaitGroup
 
+	// 报告模块开始
+	m.ReportModuleStart(0)
+	defer m.ReportModuleComplete()
+
 	// 并发控制
 	sem := make(chan struct{}, m.concurrency)
 
@@ -64,6 +68,8 @@ func (m *FingerprintModule) ModuleRun() error {
 	go func() {
 		defer resultWg.Done()
 		for result := range m.resultChan {
+			// 报告输出
+			m.ReportOutput(1)
 			// 发送到下一个模块
 			if m.nextModule != nil {
 				select {
@@ -97,6 +103,9 @@ func (m *FingerprintModule) ModuleRun() error {
 				nextModuleRun.Wait()
 				return nil
 			}
+
+			// 报告进度
+			m.ReportProgress(1, 0)
 
 			// 处理 PortAlive 类型
 			portAlive, ok := data.(PortAlive)

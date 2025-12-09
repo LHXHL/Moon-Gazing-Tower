@@ -63,7 +63,14 @@ func (s *ActiveScanner) Run(ctx context.Context, domain string) ([]SubdomainResu
 
 	var wg sync.WaitGroup
 
-	// 2. API 枚举（可选）
+	// 1. Subfinder 被动枚举（推荐，使用多个免费数据源）
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.runSubfinder(ctx, domain)
+	}()
+
+	// 2. API 枚举（可选，付费API）
 	if s.config.EnableAPI {
 		wg.Add(1)
 		go func() {
@@ -94,6 +101,28 @@ func (s *ActiveScanner) Run(ctx context.Context, domain string) ([]SubdomainResu
 
 	log.Printf("[ActiveScanner] Scan completed for %s, found %d subdomains", domain, len(results))
 	return results, nil
+}
+
+// runSubfinder 使用 subfinder 进行被动枚举
+func (s *ActiveScanner) runSubfinder(ctx context.Context, domain string) {
+	subfinder := NewSubfinderScanner()
+	if subfinder == nil {
+		log.Printf("[ActiveScanner] Subfinder not available, skipping passive enumeration")
+		return
+	}
+
+	subdomains, err := subfinder.Scan(ctx, domain)
+	if err != nil {
+		log.Printf("[ActiveScanner] Subfinder error: %v", err)
+		return
+	}
+
+	// 添加结果（暂时不解析IP，后续统一验证）
+	for _, sub := range subdomains {
+		s.addResult(sub, nil, "subfinder")
+	}
+
+	log.Printf("[ActiveScanner] Subfinder found %d subdomains", len(subdomains))
 }
 
 // runAPIEnum 执行API枚举（仅支持付费API: fofa, hunter, quake, securitytrails）

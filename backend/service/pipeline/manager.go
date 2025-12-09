@@ -147,11 +147,12 @@ func (dc *DuplicateChecker) IsURLDuplicate(url string) bool {
 // BaseModule 基础模块
 // 提供通用的模块功能
 type BaseModule struct {
-	name       string
-	input      chan interface{}
-	nextModule ModuleRunner
-	ctx        context.Context
-	dupChecker *DuplicateChecker
+	name            string
+	input           chan interface{}
+	nextModule      ModuleRunner
+	ctx             context.Context
+	dupChecker      *DuplicateChecker
+	progressTracker *ProgressTracker
 }
 
 // SetInput 设置输入通道
@@ -179,6 +180,47 @@ func (m *BaseModule) GetName() string {
 // SetNextModule 设置下一个模块
 func (m *BaseModule) SetNextModule(next ModuleRunner) {
 	m.nextModule = next
+}
+
+// SetProgressTracker 设置进度追踪器
+func (m *BaseModule) SetProgressTracker(tracker *ProgressTracker) {
+	m.progressTracker = tracker
+}
+
+// GetProgressTracker 获取进度追踪器
+func (m *BaseModule) GetProgressTracker() *ProgressTracker {
+	return m.progressTracker
+}
+
+// ReportProgress 报告模块进度
+func (m *BaseModule) ReportProgress(processed int, total int) {
+	if m.progressTracker != nil {
+		if total > 0 {
+			m.progressTracker.UpdateModuleTotal(m.name, total)
+		}
+		m.progressTracker.IncrementModuleProcessed(m.name, processed)
+	}
+}
+
+// ReportModuleStart 报告模块开始
+func (m *BaseModule) ReportModuleStart(totalItems int) {
+	if m.progressTracker != nil {
+		m.progressTracker.StartModule(m.name, totalItems)
+	}
+}
+
+// ReportModuleComplete 报告模块完成
+func (m *BaseModule) ReportModuleComplete() {
+	if m.progressTracker != nil {
+		m.progressTracker.CompleteModule(m.name)
+	}
+}
+
+// ReportOutput 报告输出
+func (m *BaseModule) ReportOutput(count int) {
+	if m.progressTracker != nil {
+		m.progressTracker.IncrementModuleOutput(m.name, count)
+	}
 }
 
 // SendToNext 发送数据到下一个模块

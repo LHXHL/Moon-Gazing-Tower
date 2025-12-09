@@ -17,6 +17,7 @@ type PipelineConfig struct {
 	SubdomainMaxEnumTime  int    `json:"subdomain_max_enum_time"` // 分钟
 	SubdomainResolveIP    bool   `json:"subdomain_resolve_ip"`
 	SubdomainCheckTakeover bool  `json:"subdomain_check_takeover"`
+	SubdomainHTTPProbe    bool   `json:"subdomain_http_probe"`    // 是否对子域名进行 HTTP 探测获取标题、状态码等
 
 	// 端口扫描
 	PortScan     bool   `json:"port_scan"`
@@ -78,6 +79,9 @@ type StreamingPipeline struct {
 	dirScanModule     *DirScanModule
 	sensitiveModule   *SensitiveModule
 	
+	// 进度追踪
+	progressTracker *ProgressTracker
+	
 	// 状态
 	running bool
 	mu      sync.Mutex
@@ -92,12 +96,83 @@ func NewStreamingPipeline(ctx context.Context, task *models.Task, config *Pipeli
 	pipeCtx, cancel := context.WithCancel(ctx)
 
 	return &StreamingPipeline{
-		ctx:        pipeCtx,
-		cancel:     cancel,
-		config:     config,
-		task:       task,
-		resultChan: make(chan interface{}, 1000),
+		ctx:             pipeCtx,
+		cancel:          cancel,
+		config:          config,
+		task:            task,
+		resultChan:      make(chan interface{}, 1000),
+		progressTracker: nil, // 默认无进度追踪，需要通过 SetProgressCallback 设置
 	}
+}
+
+// NewStreamingPipelineWithProgress 创建带进度追踪的扫描流水线
+func NewStreamingPipelineWithProgress(ctx context.Context, task *models.Task, config *PipelineConfig, totalTargets int, callback ProgressCallback) *StreamingPipeline {
+	p := NewStreamingPipeline(ctx, task, config)
+	p.progressTracker = NewProgressTracker(totalTargets, callback)
+	
+	// 根据配置设置启用的模块权重
+	enabledModules := p.getEnabledModules()
+	p.progressTracker.SetModuleWeights(enabledModules)
+	
+	return p
+}
+
+// SetProgressCallback 设置进度回调
+func (p *StreamingPipeline) SetProgressCallback(totalTargets int, callback ProgressCallback) {
+	p.progressTracker = NewProgressTracker(totalTargets, callback)
+	enabledModules := p.getEnabledModules()
+	p.progressTracker.SetModuleWeights(enabledModules)
+}
+
+// getEnabledModules 获取启用的模块列表
+func (p *StreamingPipeline) getEnabledModules() []string {
+	var modules []string
+	if p.config.SubdomainScan {
+		modules = append(modules, "SubdomainScan", "DomainVerify")
+	}
+	if p.config.PortScan {
+		if p.config.SkipCDN {
+			modules = append(modules, "PortPreparation")
+		}
+		modules = append(modules, "PortScan")
+	}
+	if p.config.Fingerprint {
+		modules = append(modules, "Fingerprint")
+	}
+	if p.config.VulnScan {
+		modules = append(modules, "VulnScan")
+	}
+	if p.config.WebCrawler {
+		modules = append(modules, "Crawler")
+	}
+	if p.config.DirScan {
+		modules = append(modules, "DirScan")
+	}
+	if p.config.SensitiveScan {
+		modules = append(modules, "Sensitive")
+	}
+	return modules
+}
+
+// GetProgressTracker 获取进度追踪器
+func (p *StreamingPipeline) GetProgressTracker() *ProgressTracker {
+	return p.progressTracker
+}
+
+// GetProgress 获取当前进度 (0-100)
+func (p *StreamingPipeline) GetProgress() int {
+	if p.progressTracker == nil {
+		return 0
+	}
+	return p.progressTracker.GetOverallProgress()
+}
+
+// GetProgressReport 获取详细进度报告
+func (p *StreamingPipeline) GetProgressReport() *ProgressReport {
+	if p.progressTracker == nil {
+		return nil
+	}
+	return p.progressTracker.GetReport()
 }
 
 // Start 启动流水线
@@ -183,6 +258,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.SensitiveScan {
 		p.sensitiveModule = NewSensitiveModule(p.ctx, lastModule, 10)
 		p.sensitiveModule.SetInput(make(chan interface{}, 500))
+		p.sensitiveModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.sensitiveModule
 	}
 
@@ -190,6 +266,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.DirScan {
 		p.dirScanModule = NewDirScanModule(p.ctx, lastModule, 20, nil)
 		p.dirScanModule.SetInput(make(chan interface{}, 500))
+		p.dirScanModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.dirScanModule
 	}
 
@@ -197,6 +274,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.WebCrawler {
 		p.crawlerModule = NewCrawlerModule(p.ctx, lastModule, 5, true, false) // 默认使用Katana
 		p.crawlerModule.SetInput(make(chan interface{}, 500))
+		p.crawlerModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.crawlerModule
 	}
 
@@ -204,6 +282,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.VulnScan {
 		p.vulnScanModule = NewVulnScanModule(p.ctx, lastModule, 10)
 		p.vulnScanModule.SetInput(make(chan interface{}, 500))
+		p.vulnScanModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.vulnScanModule
 	}
 
@@ -211,6 +290,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.Fingerprint {
 		p.fingerprintModule = NewFingerprintModule(p.ctx, lastModule, 20)
 		p.fingerprintModule.SetInput(make(chan interface{}, 500))
+		p.fingerprintModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.fingerprintModule
 	}
 
@@ -218,6 +298,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.PortScan {
 		p.portScanModule = NewPortScanModule(p.ctx, lastModule, p.config.PortRange, p.config.PortScanMode)
 		p.portScanModule.SetInput(make(chan interface{}, 500))
+		p.portScanModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.portScanModule
 	}
 
@@ -225,6 +306,7 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.PortScan && p.config.SkipCDN {
 		p.portPrepModule = NewPortScanPreparationModule(p.ctx, lastModule)
 		p.portPrepModule.SetInput(make(chan interface{}, 500))
+		p.portPrepModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.portPrepModule
 	}
 
@@ -232,13 +314,15 @@ func (p *StreamingPipeline) buildModuleChain() error {
 	if p.config.SubdomainScan {
 		p.securityModule = NewDomainVerifyModule(p.ctx, lastModule, 50)
 		p.securityModule.SetInput(make(chan interface{}, 500))
+		p.securityModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.securityModule
 	}
 
 	// 子域名扫描模块（入口模块）
 	if p.config.SubdomainScan {
-		p.subdomainModule = NewSubdomainScanModule(p.ctx, lastModule, p.config.SubdomainMaxEnumTime, p.config.SubdomainResolveIP)
+		p.subdomainModule = NewSubdomainScanModuleWithHTTPProbe(p.ctx, lastModule, p.config.SubdomainMaxEnumTime, p.config.SubdomainResolveIP, p.config.SubdomainHTTPProbe)
 		p.subdomainModule.SetInput(make(chan interface{}, 500))
+		p.subdomainModule.SetProgressTracker(p.progressTracker)
 		lastModule = p.subdomainModule
 	}
 

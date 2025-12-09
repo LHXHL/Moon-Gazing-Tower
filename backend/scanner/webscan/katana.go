@@ -61,12 +61,12 @@ func NewKatanaScanner() *KatanaScanner {
 
 	return &KatanaScanner{
 		BinPath:          binPath,
-		Depth:            5,
-		Concurrency:      5,
-		Timeout:          5,
-		RateLimit:        150,
+		Depth:            3,   // 爬取深度
+		Concurrency:      10,  // 并发数
+		Timeout:          30,  // 每个请求超时（秒）
+		RateLimit:        150, // 速率限制
 		TempDir:          os.TempDir(),
-		ExecutionTimeout: 20,
+		ExecutionTimeout: 10,  // 执行超时（分钟）
 	}
 }
 
@@ -182,4 +182,121 @@ func (k *KatanaScanner) QuickCrawl(ctx context.Context, target string) (*KatanaR
 func (k *KatanaScanner) DeepCrawl(ctx context.Context, target string) (*KatanaResult, error) {
 	k.Depth = 5
 	return k.Crawl(ctx, target)
+}
+
+// CrawlList 批量爬取多个URL（使用 -list 参数）
+// 接收 URL 列表，写入临时文件，然后调用 katana -list
+func (k *KatanaScanner) CrawlList(ctx context.Context, urls []string) (*KatanaResult, error) {
+	if !k.IsAvailable() {
+		return nil, fmt.Errorf("katana not available")
+	}
+
+	if len(urls) == 0 {
+		return &KatanaResult{
+			URLs: []KatanaCrawledURL{},
+		}, nil
+	}
+
+	result := &KatanaResult{
+		Target:    fmt.Sprintf("list(%d urls)", len(urls)),
+		StartTime: time.Now(),
+		URLs:      make([]KatanaCrawledURL, 0),
+	}
+
+	// 创建输入文件（URL列表）
+	inputFile, err := os.CreateTemp(k.TempDir, "katana_input_*.txt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create input file: %v", err)
+	}
+	inputPath := inputFile.Name()
+	defer os.Remove(inputPath)
+
+	// 写入 URL 列表
+	for _, url := range urls {
+		// 确保 URL 有协议
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			url = "https://" + url
+		}
+		inputFile.WriteString(url + "\n")
+	}
+	inputFile.Close()
+
+	// 创建输出文件
+	outputFile, err := os.CreateTemp(k.TempDir, "katana_output_*.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output file: %v", err)
+	}
+	outputPath := outputFile.Name()
+	outputFile.Close()
+	defer os.Remove(outputPath)
+
+	// 构建命令
+	// katana -list input.txt -d depth -c concurrency -timeout timeout -rl rate -jsonl -o output
+	args := []string{
+		"-list", inputPath,
+		"-d", fmt.Sprintf("%d", k.Depth),
+		"-c", fmt.Sprintf("%d", k.Concurrency),
+		"-timeout", fmt.Sprintf("%d", k.Timeout),
+		"-rl", fmt.Sprintf("%d", k.RateLimit),
+		"-silent",
+		"-jsonl",
+		"-o", outputPath,
+	}
+
+	cmd := exec.CommandContext(ctx, k.BinPath, args...)
+
+	fmt.Printf("[*] Running Katana (list mode): %s -list [%d urls] ...\n", k.BinPath, len(urls))
+
+	err = cmd.Run()
+	if err != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+		fmt.Printf("[!] Katana error: %v\n", err)
+	}
+
+	// 解析输出
+	file, err := os.Open(outputPath)
+	if err != nil {
+		return result, nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	seen := make(map[string]bool)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var jsonOutput KatanaJSONOutput
+		if err := json.Unmarshal([]byte(line), &jsonOutput); err == nil {
+			url := jsonOutput.Request.Endpoint
+			if url != "" && !seen[url] {
+				seen[url] = true
+				result.URLs = append(result.URLs, KatanaCrawledURL{
+					URL:        url,
+					Method:     jsonOutput.Request.Method,
+					StatusCode: jsonOutput.Response.StatusCode,
+				})
+			}
+		} else {
+			if !seen[line] {
+				seen[line] = true
+				result.URLs = append(result.URLs, KatanaCrawledURL{
+					URL: line,
+				})
+			}
+		}
+	}
+
+	result.EndTime = time.Now()
+	result.Duration = result.EndTime.Sub(result.StartTime).String()
+	result.Total = len(result.URLs)
+
+	fmt.Printf("[*] Katana list crawl completed: %d URLs found from %d targets\n", result.Total, len(urls))
+
+	return result, nil
 }

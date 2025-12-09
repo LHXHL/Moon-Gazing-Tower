@@ -95,7 +95,12 @@ export default function CruisePage() {
     targets: [],
     target_type: 'domain',
     task_type: 'full',
-    config: {},
+    config: {
+      scan_types: ['subdomain', 'port_scan', 'fingerprint', 'vuln_scan'],
+      port_scan_mode: 'top1000',
+      timeout: 30,
+      concurrent: 50,
+    },
     notify_on_complete: false,
     notify_on_vuln: true,
   })
@@ -146,6 +151,9 @@ export default function CruisePage() {
       queryClient.invalidateQueries({ queryKey: ['cruises'] })
       queryClient.invalidateQueries({ queryKey: ['cruiseStats'] })
     },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
+    },
   })
 
   const enableMutation = useMutation({
@@ -154,6 +162,9 @@ export default function CruisePage() {
       toast({ title: '已启用' })
       queryClient.invalidateQueries({ queryKey: ['cruises'] })
       queryClient.invalidateQueries({ queryKey: ['cruiseStats'] })
+    },
+    onError: () => {
+      toast({ title: '启用失败', variant: 'destructive' })
     },
   })
 
@@ -164,6 +175,9 @@ export default function CruisePage() {
       queryClient.invalidateQueries({ queryKey: ['cruises'] })
       queryClient.invalidateQueries({ queryKey: ['cruiseStats'] })
     },
+    onError: () => {
+      toast({ title: '禁用失败', variant: 'destructive' })
+    },
   })
 
   const runMutation = useMutation({
@@ -171,6 +185,9 @@ export default function CruisePage() {
     onSuccess: () => {
       toast({ title: '已触发执行' })
       queryClient.invalidateQueries({ queryKey: ['cruises'] })
+    },
+    onError: () => {
+      toast({ title: '执行失败', variant: 'destructive' })
     },
   })
 
@@ -184,7 +201,12 @@ export default function CruisePage() {
       targets: [],
       target_type: 'domain',
       task_type: 'full',
-      config: {},
+      config: {
+        scan_types: ['subdomain', 'port_scan', 'fingerprint', 'vuln_scan'],
+        port_scan_mode: 'top1000',
+        timeout: 30,
+        concurrent: 50,
+      },
       notify_on_complete: false,
       notify_on_vuln: true,
     })

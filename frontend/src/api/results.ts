@@ -141,21 +141,23 @@ interface BackendResponse<T> {
 
 // 转换函数：将后端 snake_case 转为前端 camelCase
 function transformResult(item: Record<string, unknown>): Record<string, unknown> {
-  // 获取嵌套的 data 对象
+  // 后端已经扁平化了数据，直接使用 item 本身
+  // 如果有 data 字段（旧格式），则合并
   const dataObj = (item.data as Record<string, unknown>) || {}
+  const mergedItem = { ...item, ...dataObj }
   
   return {
-    id: item.id || item._id,
-    taskId: item.task_id,
-    type: item.type,
-    data: item.data,
-    tags: item.tags || [],
-    project: item.project || '',
-    source: item.source || '',
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-    // 合并 data 中的字段到顶层
-    ...transformDataFields(dataObj),
+    id: mergedItem.id || mergedItem._id,
+    taskId: mergedItem.task_id,
+    type: mergedItem.type,
+    data: mergedItem.data,
+    tags: mergedItem.tags || [],
+    project: mergedItem.project || '',
+    source: mergedItem.source || '',
+    createdAt: mergedItem.created_at || mergedItem.createdAt,
+    updatedAt: mergedItem.updated_at || mergedItem.updatedAt,
+    // 合并扁平化的字段
+    ...transformDataFields(mergedItem),
   }
 }
 
@@ -205,12 +207,25 @@ function transformDataFields(data: Record<string, unknown>): Record<string, unkn
     result.ips = data.ips
   }
   
-  // snake_case 到 camelCase 的映射
+  // snake_case 到 camelCase 的映射（同时保留原始字段）
   if (data.icp_type !== undefined) result.icpType = data.icp_type
-  if (data.status_code !== undefined) result.statusCode = data.status_code
-  if (data.http_status !== undefined) result.statusCode = data.http_status
+  if (data.status_code !== undefined) {
+    result.statusCode = data.status_code
+    result.status_code = data.status_code  // 保留 snake_case
+  }
+  if (data.http_status !== undefined) {
+    result.statusCode = data.http_status
+    result.status_code = data.http_status
+  }
   if (data.content_type !== undefined) result.contentType = data.content_type
-  if (data.web_server !== undefined) result.webServer = data.web_server
+  if (data.web_server !== undefined) {
+    result.webServer = data.web_server
+    result.server = data.web_server  // 前端用 server
+  }
+  if (data.server !== undefined) {
+    result.server = data.server
+    result.webServer = data.server
+  }
   if (data.cdn_provider !== undefined) result.cdnProvider = data.cdn_provider
   if (data.cdn_name !== undefined) result.cdnName = data.cdn_name
   if (data.is_alive !== undefined) result.isAlive = data.is_alive
@@ -219,7 +234,14 @@ function transformDataFields(data: Record<string, unknown>): Record<string, unkn
   if (data.is_api !== undefined) result.isApi = data.is_api
   
   // 数组字段
-  if (data.fingerprint !== undefined) result.fingerprint = data.fingerprint
+  if (data.fingerprint !== undefined) {
+    result.fingerprint = data.fingerprint
+    result.fingerprints = data.fingerprint  // 前端用 fingerprints
+  }
+  if (data.fingerprints !== undefined) {
+    result.fingerprints = data.fingerprints
+    result.fingerprint = data.fingerprints
+  }
   if (data.technologies !== undefined) result.technologies = data.technologies
   
   // 布尔字段
@@ -308,6 +330,34 @@ export const resultApi = {
       message: response.message,
       data: {
         list: (response.data || []).map(transformResult) as unknown as SubdomainResult[],
+        total: response.total || 0,
+        page: response.page || 1,
+        pageSize: response.size || 20,
+      }
+    }
+  },
+
+  // 获取端口结果（按 IP 聚合）
+  getPortResults: async (
+    taskId: string,
+    params?: { page?: number; pageSize?: number; search?: string }
+  ) => {
+    const response = await api.get<BackendResponse<Record<string, unknown>[]>>(
+      `/tasks/${taskId}/results/ports`,
+      {
+        params: {
+          page: params?.page || 1,
+          size: params?.pageSize || 20,
+          search: params?.search,
+        }
+      }
+    ) as unknown as BackendResponse<Record<string, unknown>[]>
+    
+    return {
+      code: response.code,
+      message: response.message,
+      data: {
+        list: response.data || [],
         total: response.total || 0,
         page: response.page || 1,
         pageSize: response.size || 20,

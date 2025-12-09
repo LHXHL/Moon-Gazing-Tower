@@ -146,10 +146,11 @@ func (s *TaskService) DeleteTask(taskID string) error {
 		return fmt.Errorf("无效的任务ID: %w", err)
 	}
 	
-	// Check if task is running
+	// Check if task is running and cancel it first
 	task, _ := s.GetTaskByID(taskID)
 	if task != nil && task.Status == models.TaskStatusRunning {
-		return errors.New("不能删除正在运行的任务")
+		// 先取消正在运行的任务
+		_ = s.CancelTask(taskID)
 	}
 	
 	collection := database.GetCollection(models.CollectionTasks)

@@ -89,6 +89,9 @@ export default function QueuePage() {
       queryClient.invalidateQueries({ queryKey: ['queue-deadletter'] })
       queryClient.invalidateQueries({ queryKey: ['queue-stats'] })
     },
+    onError: () => {
+      toast({ title: '重试失败', variant: 'destructive' })
+    },
   })
 
   // 清空死信队列
@@ -99,6 +102,9 @@ export default function QueuePage() {
       queryClient.invalidateQueries({ queryKey: ['queue-deadletter'] })
       queryClient.invalidateQueries({ queryKey: ['queue-stats'] })
     },
+    onError: () => {
+      toast({ title: '清空失败', variant: 'destructive' })
+    },
   })
 
   // 取消任务
@@ -108,6 +114,9 @@ export default function QueuePage() {
       toast({ title: '任务已取消' })
       queryClient.invalidateQueries({ queryKey: ['queue-pending'] })
       queryClient.invalidateQueries({ queryKey: ['queue-stats'] })
+    },
+    onError: () => {
+      toast({ title: '取消失败', variant: 'destructive' })
     },
   })
 

@@ -29,7 +29,7 @@ func (s *StringList) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// FingerprintRule represents a fingerprint rule from veo-style YAML
+// FingerprintRule represents a fingerprint rule definition
 type FingerprintRule struct {
 	ID        string     `yaml:"-"`        // Rule ID (from map key)
 	Name      string     `yaml:"-"`        // Rule name (same as ID)

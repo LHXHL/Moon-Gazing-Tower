@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Table,
@@ -118,6 +119,15 @@ export default function TaskDetailPage() {
 
   // 获取当前Tab的结果数据（dirscan时支持状态码筛选）
   const statusCodeNum = statusCodeFilter !== 'all' ? parseInt(statusCodeFilter) : undefined
+  
+  // 端口数据使用聚合 API
+  const { data: portResultsData, isLoading: portResultsLoading } = useQuery({
+    queryKey: ['task-port-results', id, page, search],
+    queryFn: () => resultApi.getPortResults(id!, { page, pageSize, search }),
+    enabled: !!id && currentTab === 'port',
+  })
+
+  // 其他类型使用通用 API
   const { data: resultsData, isLoading: resultsLoading } = useQuery({
     queryKey: ['task-results', id, currentTab, page, search, statusCodeFilter],
     queryFn: () => resultApi.getTaskResults(id!, { 
@@ -127,7 +137,7 @@ export default function TaskDetailPage() {
       search,
       statusCode: currentTab === 'dirscan' ? statusCodeNum : undefined
     }),
-    enabled: !!id && !!activeTab,
+    enabled: !!id && !!activeTab && currentTab !== 'port',
   })
 
   // 任务操作 mutations
@@ -201,8 +211,13 @@ export default function TaskDetailPage() {
 
   const task = data?.data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const results: any[] = resultsData?.data?.list || []
-  const total = resultsData?.data?.total || 0
+  const results: any[] = currentTab === 'port' 
+    ? (portResultsData?.data?.list || [])
+    : (resultsData?.data?.list || [])
+  const total = currentTab === 'port'
+    ? (portResultsData?.data?.total || 0)
+    : (resultsData?.data?.total || 0)
+  const isResultsLoading = currentTab === 'port' ? portResultsLoading : resultsLoading
 
   // 生成带统计数字的tabs
   const tabs = tabConfig.map(tab => ({
@@ -350,55 +365,59 @@ export default function TaskDetailPage() {
             </TableCell>
           </TableRow>
         ) : (
-          results.map((item: SubdomainResult, index: number) => (
-            <TableRow 
-              key={item.id}
-              className={cn(selectedRows.includes(item.id) && 'bg-muted/50')}
-            >
-              <TableCell>
-                <Checkbox 
-                  checked={selectedRows.includes(item.id)}
-                  onCheckedChange={() => toggleSelectRow(item.id)}
-                />
-              </TableCell>
-              <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
-              <TableCell>
-                <a 
-                  href={`https://${item.subdomain}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline flex items-center gap-1"
-                >
-                  {item.subdomain}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </TableCell>
-              <TableCell className="text-muted-foreground font-mono text-xs">
-                {item.ips?.join(', ') || (item as unknown as { ip?: string }).ip || '-'}
-              </TableCell>
-              <TableCell className="max-w-[200px] truncate">{item.title || '-'}</TableCell>
-              <TableCell>
-                {item.statusCode && item.statusCode > 0 ? (
-                  <Badge variant={item.statusCode === 200 ? 'default' : 'secondary'}>
-                    {item.statusCode}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-muted-foreground">-</Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                {item.cdn ? (
-                  <Badge variant="outline">{item.cdnName || item.cdnProvider || 'CDN'}</Badge>
-                ) : '-'}
-              </TableCell>
-              <TableCell>
-                {(item.technologies?.slice(0, 2) || item.fingerprint?.slice(0, 2))?.map((fp: string) => (
-                  <Badge key={fp} variant="outline" className="mr-1 text-xs">{fp}</Badge>
-                )) || '-'}
-              </TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(item.createdAt)}</TableCell>
-            </TableRow>
-          ))
+          results.map((item: SubdomainResult, index: number) => {
+            // 兼容不同数据格式：subdomain 或 domain 字段
+            const subdomainName = item.subdomain || item.domain || '-'
+            return (
+              <TableRow 
+                key={item.id}
+                className={cn(selectedRows.includes(item.id) && 'bg-muted/50')}
+              >
+                <TableCell>
+                  <Checkbox 
+                    checked={selectedRows.includes(item.id)}
+                    onCheckedChange={() => toggleSelectRow(item.id)}
+                  />
+                </TableCell>
+                <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
+                <TableCell>
+                  <a 
+                    href={`https://${subdomainName}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline flex items-center gap-1"
+                  >
+                    {subdomainName}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </TableCell>
+                <TableCell className="text-muted-foreground font-mono text-xs">
+                  {item.ips?.join(', ') || (item as unknown as { ip?: string }).ip || '-'}
+                </TableCell>
+                <TableCell className="max-w-[200px] truncate">{item.title || '-'}</TableCell>
+                <TableCell>
+                  {item.statusCode && item.statusCode > 0 ? (
+                    <Badge variant={item.statusCode === 200 ? 'default' : 'secondary'}>
+                      {item.statusCode}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">-</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {item.cdn ? (
+                    <Badge variant="outline">{item.cdnName || item.cdnProvider || 'CDN'}</Badge>
+                  ) : '-'}
+                </TableCell>
+                <TableCell>
+                  {(item.technologies?.slice(0, 2) || item.fingerprint?.slice(0, 2))?.map((fp: string) => (
+                    <Badge key={fp} variant="outline" className="mr-1 text-xs">{fp}</Badge>
+                  )) || '-'}
+                </TableCell>
+                <TableCell className="text-muted-foreground">{formatDate(item.createdAt)}</TableCell>
+              </TableRow>
+            )
+          })
         )}
       </TableBody>
     </Table>
@@ -636,48 +655,60 @@ export default function TaskDetailPage() {
           <TableHead className="w-16">序号</TableHead>
           <TableHead>IP</TableHead>
           <TableHead>端口</TableHead>
-          <TableHead>协议</TableHead>
           <TableHead>服务</TableHead>
-          <TableHead>版本</TableHead>
-          <TableHead>指纹</TableHead>
           <TableHead>时间</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {results.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-              {resultsLoading ? '加载中...' : '暂无数据'}
+            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+              {isResultsLoading ? '加载中...' : '暂无数据'}
             </TableCell>
           </TableRow>
         ) : (
-          results.map((item: Record<string, unknown>, index: number) => (
-            <TableRow 
-              key={item.id as string}
-              className={cn(selectedRows.includes(item.id as string) && 'bg-muted/50')}
-            >
-              <TableCell>
-                <Checkbox 
-                  checked={selectedRows.includes(item.id as string)}
-                  onCheckedChange={() => toggleSelectRow(item.id as string)}
-                />
-              </TableCell>
-              <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
-              <TableCell className="font-mono">{item.ip as string}</TableCell>
-              <TableCell>
-                <Badge variant="outline">{item.port as number}</Badge>
-              </TableCell>
-              <TableCell>{item.protocol as string || 'tcp'}</TableCell>
-              <TableCell>{item.service as string || '-'}</TableCell>
-              <TableCell className="text-muted-foreground">{item.version as string || '-'}</TableCell>
-              <TableCell>
-                {(item.fingerprint as string[])?.slice(0, 2).map((fp: string) => (
-                  <Badge key={fp} variant="outline" className="mr-1 text-xs">{fp}</Badge>
-                ))}
-              </TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(item.createdAt as string)}</TableCell>
-            </TableRow>
-          ))
+          results.map((item: Record<string, unknown>, index: number) => {
+            const ports = (item.ports as string[]) || []
+            const services = (item.services as string[]) || []
+            return (
+              <TableRow 
+                key={item.ip as string}
+                className={cn(selectedRows.includes(item.ip as string) && 'bg-muted/50')}
+              >
+                <TableCell>
+                  <Checkbox 
+                    checked={selectedRows.includes(item.ip as string)}
+                    onCheckedChange={() => toggleSelectRow(item.ip as string)}
+                  />
+                </TableCell>
+                <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
+                <TableCell className="font-mono">{item.ip as string}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {ports.slice(0, 10).map((port, i) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {port}
+                      </Badge>
+                    ))}
+                    {ports.length > 10 && (
+                      <Badge variant="secondary" className="text-xs">+{ports.length - 10}</Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {[...new Set(services.filter(Boolean))].slice(0, 5).map((s: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>
+                    ))}
+                    {[...new Set(services.filter(Boolean))].length > 5 && (
+                      <Badge variant="outline" className="text-xs">+{[...new Set(services.filter(Boolean))].length - 5}</Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{formatDate(item.created_at as string)}</TableCell>
+              </TableRow>
+            )
+          })
         )}
       </TableBody>
     </Table>
@@ -1003,10 +1034,42 @@ export default function TaskDetailPage() {
                 <Badge className={cn(getStatusColor(task.status), 'text-xs')}>
                   {getStatusLabel(task.status)}
                 </Badge>
+                {task.status === 'running' && (
+                  <span className="text-sm text-blue-500 font-medium">
+                    {task.progress}%
+                    {task.progressDetails?.current_module && (
+                      <span className="text-muted-foreground ml-1">
+                        ({task.progressDetails.current_module})
+                      </span>
+                    )}
+                  </span>
+                )}
                 <span className="text-muted-foreground text-sm">{task.type}</span>
                 <span className="text-muted-foreground text-sm">•</span>
                 <span className="text-muted-foreground text-sm">{formatDate(task.createdAt)}</span>
+                {task.status === 'running' && task.progressDetails?.elapsed_time && (
+                  <>
+                    <span className="text-muted-foreground text-sm">•</span>
+                    <span className="text-muted-foreground text-sm">
+                      已用: {task.progressDetails.elapsed_time}
+                    </span>
+                  </>
+                )}
+                {task.status === 'running' && task.progressDetails?.estimated_time_left && task.progressDetails.estimated_time_left !== '计算中...' && (
+                  <>
+                    <span className="text-muted-foreground text-sm">•</span>
+                    <span className="text-muted-foreground text-sm">
+                      剩余: {task.progressDetails.estimated_time_left}
+                    </span>
+                  </>
+                )}
               </div>
+              {/* 运行中时显示进度条 */}
+              {task.status === 'running' && (
+                <div className="mt-2 w-64">
+                  <Progress value={task.progress} className="h-2" />
+                </div>
+              )}
             </div>
           </div>
           
@@ -1292,7 +1355,7 @@ export default function TaskDetailPage() {
       )}
 
       {/* Table Content or Topology View */}
-      <div className="flex-1 overflow-auto">
+      <div className={currentTab === 'topology' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto'}>
         {currentTab === 'topology' ? (
           <TaskTopologyView taskId={id!} taskName={task?.name || ''} />
         ) : (

@@ -21,6 +21,8 @@ func getToolsDir() string {
 		filepath.Join(execDir, "tools"),           // 与可执行文件同级的 tools
 		filepath.Join(execDir, "..", "tools"),     // 上一级的 tools (开发模式)
 		filepath.Join(".", "tools"),               // 当前目录的 tools
+		filepath.Join("..", "tools"),              // 上级目录的 tools (测试模式)
+		"tools",                                   // 直接 tools 目录
 	}
 	
 	for _, p := range possiblePaths {

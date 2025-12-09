@@ -14,6 +14,7 @@ interface BackendPaginatedResponse<T> {
 const transformTask = (task: Record<string, unknown>): Task => {
   const config = task.config as Record<string, unknown> || {}
   const resultStats = task.result_stats as Record<string, unknown> || {}
+  const progressDetails = task.progress_details as Record<string, unknown> || undefined
   
   return {
     id: task.id as string,
@@ -21,6 +22,7 @@ const transformTask = (task: Record<string, unknown>): Task => {
     type: task.type as string,
     status: (task.status as Task['status']) || 'pending',
     progress: (task.progress as number) || 0,
+    progressDetails: progressDetails as ProgressDetails | undefined,
     config: {
       scanTypes: (config.scan_types as string[]) || [],
       portRange: config.port_range as string,
@@ -55,6 +57,7 @@ export interface Task {
   type: string
   status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
   progress: number
+  progressDetails?: ProgressDetails  // 详细进度信息
   config: TaskConfig
   targets: string[]      // 扫描目标列表
   targetType?: string    // 目标类型
@@ -67,6 +70,24 @@ export interface Task {
   createdBy: string
   createdAt: string
   updatedAt: string
+}
+
+// 进度详情
+export interface ProgressDetails {
+  current_module?: string      // 当前执行的模块
+  elapsed_time?: string        // 已用时间
+  estimated_time_left?: string // 预计剩余时间
+  total_results?: number       // 总结果数
+  modules?: Record<string, ModuleProgress>  // 各模块进度
+}
+
+// 模块进度
+export interface ModuleProgress {
+  status: string      // pending, running, completed
+  progress: number    // 0-100
+  total: number       // 总项目数
+  processed: number   // 已处理项目数
+  output: number      // 输出项目数
 }
 
 export interface TaskConfig {

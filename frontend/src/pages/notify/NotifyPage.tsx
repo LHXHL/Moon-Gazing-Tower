@@ -122,6 +122,9 @@ export default function NotifyPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notify-configs'] })
     },
+    onError: () => {
+      toast({ title: '状态切换失败', variant: 'destructive' })
+    },
   })
 
   // 测试配置

@@ -13,6 +13,7 @@ type User struct {
 	Password  string             `json:"-" bson:"password"`
 	Email     string             `json:"email" bson:"email"`
 	Phone     string             `json:"phone" bson:"phone"`
+	Nickname  string             `json:"nickname" bson:"nickname"`
 	Avatar    string             `json:"avatar" bson:"avatar"`
 	Role      string             `json:"role" bson:"role"` // admin, user, viewer
 	Status    int                `json:"status" bson:"status"` // 1: active, 0: disabled

@@ -51,6 +51,10 @@ func (m *PortScanModule) ModuleRun() error {
 	var resultWg sync.WaitGroup
 	var nextModuleRun sync.WaitGroup
 
+	// 报告模块开始
+	m.ReportModuleStart(0)
+	defer m.ReportModuleComplete()
+
 	// 检查 GoGo 是否可用
 	if !m.gogoScanner.IsAvailable() {
 		log.Printf("[%s] GoGo not available, skipping port scan", m.name)
@@ -82,6 +86,8 @@ func (m *PortScanModule) ModuleRun() error {
 				if portAlive.Port != "" && m.dupChecker.IsPortDuplicate(portAlive.Host, portAlive.Port) {
 					continue
 				}
+				// 报告输出
+				m.ReportOutput(1)
 			}
 
 			// 发送到下一个模块
@@ -100,6 +106,7 @@ func (m *PortScanModule) ModuleRun() error {
 	}()
 
 	// 处理输入
+	var processedCount int
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -119,6 +126,10 @@ func (m *PortScanModule) ModuleRun() error {
 				nextModuleRun.Wait()
 				return nil
 			}
+
+			processedCount++
+			// 报告进度
+			m.ReportProgress(1, 0)
 
 			// 处理不同类型的输入
 			var domainSkip DomainSkip
@@ -144,13 +155,8 @@ func (m *PortScanModule) ModuleRun() error {
 				continue
 			}
 
-			// 无论是否扫描，都发送一个基础记录
-			baseResult := PortAlive{
-				Host: domainSkip.Domain,
-				IP:   "",
-				Port: "",
-			}
-			m.resultChan <- baseResult
+			// 无论是否扫描，标记该域名已处理
+			// 不再发送空端口记录，避免混淆
 
 			// 如果需要跳过（如CDN），不进行端口扫描
 			if domainSkip.Skip {

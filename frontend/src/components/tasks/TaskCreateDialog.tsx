@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
-import { Play, Plus, X } from 'lucide-react'
+import { Play, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const scanTypes = [
@@ -114,10 +114,6 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
     setDirectTargets(directTargets.filter(t => t !== target))
   }
 
-  const clearDirectTargets = () => {
-    setDirectTargets([])
-  }
-
   // 根据选择的扫描类型自动确定任务类型
   const getTaskType = (scanTypes: string[]): string => {
     if (scanTypes.length === 0) return 'port_scan'
@@ -125,8 +121,8 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
       // 单一扫描类型直接返回对应类型
       return scanTypes[0]
     }
-    // 多种扫描类型使用 full 模式，让后端流水线处理
-    return 'full'
+    // 多种扫描类型使用 custom 模式，后端根据 scanTypes 执行对应模块
+    return 'custom'
   }
 
   const handleSubmit = (_startImmediately = false) => {
@@ -204,199 +200,101 @@ export default function TaskCreateDialog({ open, onOpenChange }: TaskCreateDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
-          <DialogTitle className="text-lg font-semibold">创建扫描任务</DialogTitle>
+      <DialogContent className="max-w-xl p-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle className="text-base font-semibold">创建扫描任务</DialogTitle>
         </DialogHeader>
 
-        {/* 内容区域 */}
-        <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
-          {/* 任务信息 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm">任务名称 <span className="text-destructive">*</span></Label>
-              <Input
-                placeholder="例如：每日安全扫描"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm">任务描述</Label>
-              <Input
-                placeholder="可选"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </div>
+        <div className="px-5 pb-5 space-y-4">
+          {/* 任务名称 */}
+          <div className="space-y-1.5">
+            <Label className="text-sm">任务名称 <span className="text-destructive">*</span></Label>
+            <Input
+              placeholder="输入任务名称"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
           </div>
 
-          {/* 扫描目标 - 只支持直接输入 */}
-          <div className="space-y-3">
-            <Label className="text-sm">扫描目标 <span className="text-destructive">*</span></Label>
-            
-            <div className="border rounded-lg p-4 bg-muted/30">
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <Textarea
-                    placeholder="输入目标，每行一个或用逗号分隔&#10;支持：IP / 域名 / URL / CIDR&#10;&#10;示例：&#10;192.168.1.1&#10;example.com&#10;https://target.com"
-                    value={targetInput}
-                      onChange={(e) => setTargetInput(e.target.value)}
-                      className="min-h-[120px] bg-background resize-none font-mono text-sm"
-                    />
-                    <Button type="button" onClick={addDirectTargets} size="sm" className="mt-2">
-                      <Plus className="h-4 w-4 mr-1" />
-                      添加到列表
-                    </Button>
-                  </div>
-                  <div className="w-64">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">目标列表</span>
-                      {directTargets.length > 0 && (
-                        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={clearDirectTargets}>
-                          清空
-                        </Button>
-                      )}
-                    </div>
-                    <div className="border rounded-lg bg-background min-h-[120px] max-h-[120px] overflow-auto">
-                      {directTargets.length === 0 ? (
-                        <div className="flex items-center justify-center h-[120px] text-sm text-muted-foreground">
-                          暂无目标
-                        </div>
-                      ) : (
-                        <div className="p-2 space-y-1">
-                          {directTargets.map((target, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted group"
-                            >
-                              <Badge variant="secondary" className="text-[10px] font-normal shrink-0">
-                                {detectTargetType(target)}
-                              </Badge>
-                              <span className="flex-1 truncate text-xs font-mono">{target}</span>
-                              <X
-                                className="h-3 w-3 text-muted-foreground cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
-                                onClick={() => removeDirectTarget(target)}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-2 text-xs text-muted-foreground text-center">
-                      共 {directTargets.length} 个目标
-                    </div>
-                  </div>
-                </div>
+          {/* 扫描目标 */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">扫描目标 <span className="text-destructive">*</span></Label>
+              <span className="text-xs text-muted-foreground">{directTargets.length} 个目标</span>
+            </div>
+            <Textarea
+              placeholder="输入目标，每行一个或用逗号/空格分隔&#10;支持：IP / 域名 / URL / CIDR"
+              value={targetInput}
+              onChange={(e) => setTargetInput(e.target.value)}
+              onBlur={addDirectTargets}
+              className="min-h-[80px] font-mono text-sm resize-none"
+            />
+            {directTargets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 max-h-[60px] overflow-auto p-2 bg-muted/50 rounded-md">
+                {directTargets.map((target, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs font-mono gap-1 pr-1">
+                    {target}
+                    <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => removeDirectTarget(target)} />
+                  </Badge>
+                ))}
               </div>
+            )}
           </div>
 
-          {/* 扫描类型 */}
-          <div className="space-y-3">
+          {/* 扫描类型 - 简化为 checkbox 风格 */}
+          <div className="space-y-1.5">
             <Label className="text-sm">扫描类型 <span className="text-destructive">*</span></Label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               {scanTypes.map((type) => (
                 <div
                   key={type.id}
                   className={cn(
-                    'relative p-3 border rounded-lg cursor-pointer transition-all text-center',
+                    'px-2.5 py-1.5 border rounded cursor-pointer text-center text-xs transition-all',
                     formData.config.scanTypes?.includes(type.id)
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'hover:bg-muted/50 hover:border-muted-foreground/20'
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'hover:bg-muted'
                   )}
                   onClick={() => toggleScanType(type.id)}
                 >
-                  {formData.config.scanTypes?.includes(type.id) && (
-                    <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary" />
-                  )}
-                  <div className="font-medium text-sm">{type.label}</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">{type.description}</div>
+                  {type.label}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 高级配置 - 折叠 */}
-          <div className="space-y-3">
-            <Label className="text-sm">扫描参数</Label>
-            <div className="grid grid-cols-4 gap-3 p-4 border rounded-lg bg-muted/30">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">端口模式</Label>
-                <Select
-                  value={formData.config.port_scan_mode || 'quick'}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      config: { ...formData.config, port_scan_mode: value },
-                    })
-                  }
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="quick">快速扫描</SelectItem>
-                    <SelectItem value="top1000">Top 1000</SelectItem>
-                    <SelectItem value="full">全端口</SelectItem>
-                    <SelectItem value="custom">自定义</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">超时 (秒)</Label>
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={formData.config.timeout || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      config: { ...formData.config, timeout: Number(e.target.value) },
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">并发数</Label>
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={formData.config.concurrent || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      config: { ...formData.config, concurrent: Number(e.target.value) },
-                    })
-                  }
-                />
-              </div>
-              {formData.config.port_scan_mode === 'custom' && (
-                <div className="col-span-4 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">自定义端口</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    placeholder="例如: 80,443,8080-8090"
-                    value={formData.config.portRange || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        config: { ...formData.config, portRange: e.target.value },
-                      })
-                    }
-                  />
-                </div>
-              )}
+          {/* 端口模式 - 仅当选择了端口扫描时显示 */}
+          {formData.config.scanTypes?.includes('port_scan') && (
+            <div className="flex items-center gap-3">
+              <Label className="text-sm shrink-0">端口范围</Label>
+              <Select
+                value={formData.config.port_scan_mode || 'quick'}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    config: { ...formData.config, port_scan_mode: value },
+                  })
+                }
+              >
+                <SelectTrigger className="h-8 text-xs w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="quick">快速</SelectItem>
+                  <SelectItem value="top1000">Top 1000</SelectItem>
+                  <SelectItem value="full">全端口</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* 底部操作按钮 */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t bg-muted/30">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+        {/* 底部操作 */}
+        <div className="flex justify-end gap-2 px-5 py-3 border-t bg-muted/30">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={() => handleSubmit(true)} disabled={createMutation.isPending}>
-            <Play className="h-4 w-4 mr-1.5" />
+          <Button size="sm" onClick={() => handleSubmit(true)} disabled={createMutation.isPending}>
+            <Play className="h-3.5 w-3.5 mr-1" />
             创建任务
           </Button>
         </div>

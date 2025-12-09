@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import * as THREE from 'three'
 import anime from 'animejs'
 import * as d3 from 'd3-force'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, X, RotateCcw } from 'lucide-react'
+import { resultApi } from '@/api/results'
 
 // Types
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -33,31 +35,85 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 interface TaskTopologyViewProps {
   taskId: string
   taskName: string
-  // Results data from parent
-  subdomains?: any[]
-  ports?: any[]
-  services?: any[]
-  vulns?: any[]
-  urls?: any[]
-  sensitiveInfos?: any[]
-  // Stats
-  stats?: Record<string, number>
 }
 
 export default function TaskTopologyView({ 
   taskId, 
-  taskName,
-  subdomains = [],
-  ports = [],
-  services = [],
-  vulns = [],
-  urls = [],
-  sensitiveInfos = [],
-  stats = {}
+  taskName
 }: TaskTopologyViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [isLoadingGraph, setIsLoadingGraph] = useState(true)
+
+  // 获取各类数据
+  const { data: subdomainsData, isLoading: isLoadingSubdomains } = useQuery({
+    queryKey: ['topology-subdomains', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'subdomain', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: portsData, isLoading: isLoadingPorts } = useQuery({
+    queryKey: ['topology-ports', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'port', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: servicesData, isLoading: isLoadingServices } = useQuery({
+    queryKey: ['topology-services', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'service', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: vulnsData, isLoading: isLoadingVulns } = useQuery({
+    queryKey: ['topology-vulns', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'vuln', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: sensitiveData, isLoading: isLoadingSensitive } = useQuery({
+    queryKey: ['topology-sensitive', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'sensitive', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: urlsData, isLoading: isLoadingUrls } = useQuery({
+    queryKey: ['topology-urls', taskId],
+    queryFn: () => resultApi.getTaskResults(taskId, { type: 'url', pageSize: 1000 }),
+    enabled: !!taskId,
+  })
+
+  const { data: statsData, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['topology-stats', taskId],
+    queryFn: () => resultApi.getResultStats(taskId),
+    enabled: !!taskId,
+  })
+
+  // 检查是否还在加载数据
+  const isDataLoading = isLoadingSubdomains || isLoadingPorts || isLoadingServices || 
+    isLoadingVulns || isLoadingSensitive || isLoadingUrls || isLoadingStats
+
+  // 从 API 响应中提取数据
+  const subdomains = subdomainsData?.data?.list || []
+  const ports = portsData?.data?.list || []
+  const services = servicesData?.data?.list || []
+  const vulns = vulnsData?.data?.list || []
+  const urls = urlsData?.data?.list || []
+  const sensitiveInfos = sensitiveData?.data?.list || []
+  const stats = statsData?.data || {}
+
+  // 调试日志
+  useEffect(() => {
+    console.log('[Topology] Data loaded:', {
+      subdomains: subdomains.length,
+      ports: ports.length,
+      services: services.length,
+      vulns: vulns.length,
+      urls: urls.length,
+      sensitiveInfos: sensitiveInfos.length,
+      stats,
+      isDataLoading
+    })
+  }, [subdomains, ports, services, vulns, urls, sensitiveInfos, stats, isDataLoading])
   
   // Three.js refs
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -120,15 +176,25 @@ export default function TaskTopologyView({
 
     // Mouse controls
     let isDragging = false
+    let isRightDragging = false
     let previousMousePosition = { x: 0, y: 0 }
     let targetRotationX = 0
     let targetRotationY = 0
     let autoRotate = true
 
     const onMouseDown = (e: MouseEvent) => {
-      isDragging = true
+      if (e.button === 0) {
+        isDragging = true
+      } else if (e.button === 2) {
+        isRightDragging = true
+      }
       autoRotate = false
       previousMousePosition = { x: e.clientX, y: e.clientY }
+      e.preventDefault()
+    }
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
     }
 
     const onMouseMove = (e: MouseEvent) => {
@@ -143,12 +209,33 @@ export default function TaskTopologyView({
         }
         targetRotationY += deltaMove.x * 0.005
         targetRotationX += deltaMove.y * 0.005
+        
+        // Rotate camera around center
+        const radius = camera.position.length()
+        const theta = Math.atan2(camera.position.x, camera.position.z) - deltaMove.x * 0.005
+        const phi = Math.acos(camera.position.y / radius)
+        const targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - deltaMove.y * 0.005))
+        
+        camera.position.x = radius * Math.sin(targetPhi) * Math.sin(theta)
+        camera.position.y = radius * Math.cos(targetPhi)
+        camera.position.z = radius * Math.sin(targetPhi) * Math.cos(theta)
+        
+        previousMousePosition = { x: e.clientX, y: e.clientY }
+      } else if (isRightDragging) {
+        // Right drag for panning
+        const deltaMove = {
+          x: e.clientX - previousMousePosition.x,
+          y: e.clientY - previousMousePosition.y
+        }
+        camera.position.x -= deltaMove.x * 0.5
+        camera.position.y += deltaMove.y * 0.5
         previousMousePosition = { x: e.clientX, y: e.clientY }
       }
     }
 
     const onMouseUp = () => {
       isDragging = false
+      isRightDragging = false
       setTimeout(() => { autoRotate = true }, 3000)
     }
 
@@ -175,8 +262,10 @@ export default function TaskTopologyView({
     renderer.domElement.addEventListener('mousedown', onMouseDown)
     renderer.domElement.addEventListener('mousemove', onMouseMove)
     renderer.domElement.addEventListener('mouseup', onMouseUp)
+    renderer.domElement.addEventListener('mouseleave', onMouseUp)
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false })
     renderer.domElement.addEventListener('click', onClick)
+    renderer.domElement.addEventListener('contextmenu', onContextMenu)
 
     // Animation loop
     let rotationAngle = 0
@@ -194,22 +283,38 @@ export default function TaskTopologyView({
     }
     animate()
 
-    // Resize handler
+    // Resize handler with ResizeObserver
     const handleResize = () => {
       if (!containerRef.current) return
-      camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight
+      const width = containerRef.current.clientWidth
+      const height = containerRef.current.clientHeight
+      if (width === 0 || height === 0) return
+      
+      camera.aspect = width / height
       camera.updateProjectionMatrix()
-      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+      renderer.setSize(width, height)
+    }
+    
+    // Use ResizeObserver for better resize detection
+    const resizeObserver = new ResizeObserver(handleResize)
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current)
     }
     window.addEventListener('resize', handleResize)
+    
+    // Initial resize after a short delay to ensure container has size
+    setTimeout(handleResize, 100)
 
     return () => {
+      resizeObserver.disconnect()
       window.removeEventListener('resize', handleResize)
       renderer.domElement.removeEventListener('mousedown', onMouseDown)
       renderer.domElement.removeEventListener('mousemove', onMouseMove)
       renderer.domElement.removeEventListener('mouseup', onMouseUp)
+      renderer.domElement.removeEventListener('mouseleave', onMouseUp)
       renderer.domElement.removeEventListener('wheel', onWheel)
       renderer.domElement.removeEventListener('click', onClick)
+      renderer.domElement.removeEventListener('contextmenu', onContextMenu)
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
       renderer.dispose()
       if (containerRef.current?.contains(renderer.domElement)) {
@@ -222,6 +327,18 @@ export default function TaskTopologyView({
   // Build graph from scan results
   useEffect(() => {
     if (!sceneRef.current) return
+    
+    // 等待数据加载完成
+    if (isDataLoading) {
+      console.log('[Topology] Still loading data, skipping graph build')
+      return
+    }
+
+    // 检查是否有数据
+    const hasData = subdomains.length > 0 || ports.length > 0 || services.length > 0 || 
+      vulns.length > 0 || urls.length > 0 || sensitiveInfos.length > 0
+    
+    console.log('[Topology] Building graph, hasData:', hasData)
 
     const dataList: any[] = []
     
@@ -499,7 +616,7 @@ export default function TaskTopologyView({
     const timer = setTimeout(() => setIsLoadingGraph(false), 2000)
     return () => clearTimeout(timer)
 
-  }, [taskId, taskName, subdomains, ports, services, vulns, urls, sensitiveInfos, stats])
+  }, [taskId, taskName, subdomains, ports, services, vulns, urls, sensitiveInfos, stats, isDataLoading])
 
   // Camera Animation
   const flyToNode = (node: GraphNode) => {
@@ -531,9 +648,9 @@ export default function TaskTopologyView({
   }
 
   return (
-    <div className="relative w-full h-[600px] bg-black rounded-lg overflow-hidden">
+    <div className="relative w-full h-full min-h-[calc(100vh-220px)] bg-black overflow-hidden">
       {/* 3D Canvas Container */}
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
 
       {/* Loading Overlay */}
       {isLoadingGraph && (
@@ -608,6 +725,14 @@ export default function TaskTopologyView({
           </div>
         </div>
       )}
+
+      {/* Instructions */}
+      <div className="absolute bottom-4 left-4 z-10 text-xs text-slate-500 space-y-1 font-mono pointer-events-none select-none bg-slate-900/60 backdrop-blur-sm p-3 rounded-lg border border-slate-800">
+        <p className="flex items-center gap-2"><span className="text-cyan-400">●</span> [左键拖拽] 旋转视图</p>
+        <p className="flex items-center gap-2"><span className="text-green-400">●</span> [右键拖拽] 平移视图</p>
+        <p className="flex items-center gap-2"><span className="text-yellow-400">●</span> [滚轮] 缩放视图</p>
+        <p className="flex items-center gap-2"><span className="text-purple-400">●</span> [点击节点] 查看详情</p>
+      </div>
     </div>
   )
 }

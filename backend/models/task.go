@@ -21,6 +21,7 @@ const (
 	TaskTypeBruteforce     TaskType = "bruteforce"
 	TaskTypeMonitor        TaskType = "monitor"
 	TaskTypeFull           TaskType = "full"
+	TaskTypeCustom         TaskType = "custom" // 用户自定义多种扫描类型组合
 )
 
 // TaskStatus represents task execution status
@@ -56,10 +57,11 @@ type Task struct {
 	CronExpr    string `json:"cron_expr,omitempty" bson:"cron_expr,omitempty"`
 	
 	// Execution Info
-	Progress    int       `json:"progress" bson:"progress"` // 0-100
-	NodeID      string    `json:"node_id" bson:"node_id"` // assigned scanner node
-	StartedAt   time.Time `json:"started_at,omitempty" bson:"started_at,omitempty"`
-	CompletedAt time.Time `json:"completed_at,omitempty" bson:"completed_at,omitempty"`
+	Progress        int                    `json:"progress" bson:"progress"` // 0-100
+	ProgressDetails map[string]interface{} `json:"progress_details,omitempty" bson:"progress_details,omitempty"` // 详细进度信息
+	NodeID          string                 `json:"node_id" bson:"node_id"` // assigned scanner node
+	StartedAt       time.Time              `json:"started_at,omitempty" bson:"started_at,omitempty"`
+	CompletedAt     time.Time              `json:"completed_at,omitempty" bson:"completed_at,omitempty"`
 	
 	// Results Summary
 	ResultStats TaskResultStats `json:"result_stats" bson:"result_stats"`

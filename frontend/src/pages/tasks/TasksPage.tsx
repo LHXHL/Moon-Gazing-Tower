@@ -62,6 +62,9 @@ export default function TasksPage() {
       toast({ title: '任务已启动' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
+    onError: () => {
+      toast({ title: '启动任务失败', variant: 'destructive' })
+    },
   })
 
   const pauseMutation = useMutation({
@@ -69,6 +72,9 @@ export default function TasksPage() {
     onSuccess: () => {
       toast({ title: '任务已暂停' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+    onError: () => {
+      toast({ title: '暂停任务失败', variant: 'destructive' })
     },
   })
 
@@ -78,6 +84,9 @@ export default function TasksPage() {
       toast({ title: '任务已取消' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
+    onError: () => {
+      toast({ title: '取消任务失败', variant: 'destructive' })
+    },
   })
 
   const resumeMutation = useMutation({
@@ -85,6 +94,9 @@ export default function TasksPage() {
     onSuccess: () => {
       toast({ title: '任务已恢复' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+    onError: () => {
+      toast({ title: '恢复任务失败', variant: 'destructive' })
     },
   })
 
@@ -94,6 +106,9 @@ export default function TasksPage() {
       toast({ title: '任务已重试' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
+    onError: () => {
+      toast({ title: '重试任务失败', variant: 'destructive' })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -101,6 +116,9 @@ export default function TasksPage() {
     onSuccess: () => {
       toast({ title: '删除成功' })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+    onError: () => {
+      toast({ title: '删除任务失败', variant: 'destructive' })
     },
   })
 
@@ -202,9 +220,21 @@ export default function TasksPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="w-32">
+                    <div className="w-40">
                       <Progress value={task.progress} className="h-2" />
-                      <span className="text-xs text-muted-foreground">{task.progress}%</span>
+                      <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                        <span>{task.progress}%</span>
+                        {task.status === 'running' && task.progressDetails && (
+                          <span className="truncate ml-1" title={task.progressDetails.current_module}>
+                            {task.progressDetails.current_module || '扫描中...'}
+                          </span>
+                        )}
+                      </div>
+                      {task.status === 'running' && task.progressDetails?.estimated_time_left && (
+                        <div className="text-xs text-muted-foreground">
+                          剩余: {task.progressDetails.estimated_time_left}
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>{formatDate(task.createdAt)}</TableCell>

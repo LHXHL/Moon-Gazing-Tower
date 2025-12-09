@@ -3,10 +3,13 @@ package middleware
 import (
 	"strings"
 
+	"moongazing/service"
 	"moongazing/utils"
 
 	"github.com/gin-gonic/gin"
 )
+
+var userService = service.NewUserService()
 
 // AuthMiddleware validates JWT token
 func AuthMiddleware() gin.HandlerFunc {
@@ -27,6 +30,14 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		
 		tokenString := parts[1]
+		
+		// Check if token is blacklisted
+		if userService.IsTokenBlacklisted(tokenString) {
+			utils.Unauthorized(c, "Token已失效，请重新登录")
+			c.Abort()
+			return
+		}
+		
 		claims, err := utils.ParseToken(tokenString)
 		if err != nil {
 			utils.Unauthorized(c, "Token无效或已过期")

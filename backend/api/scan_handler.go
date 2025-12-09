@@ -25,6 +25,7 @@ type ScanHandler struct {
 	fingerprintScanner *fingerprint.FingerprintScanner
 	vulnScanner        *vulnscan.VulnScanner
 	contentScanner     *webscan.ContentScanner
+	sprayScanner       *webscan.SprayScanner
 	weakPwdScanner     *vulnscan.WeakPasswordScanner
 	webCrawler         *webscan.WebCrawler
 	takeoverScanner    *subdomain.TakeoverScanner
@@ -39,6 +40,7 @@ func NewScanHandler() *ScanHandler {
 		fingerprintScanner: fingerprint.NewFingerprintScanner(50),
 		vulnScanner:        vulnscan.NewVulnScanner(20),
 		contentScanner:     webscan.NewContentScanner(30),
+		sprayScanner:       webscan.NewSprayScanner(),
 		weakPwdScanner:     vulnscan.NewWeakPasswordScanner(5),
 		webCrawler:         webscan.NewWebCrawler(3, 100, 10),
 		takeoverScanner:    subdomain.NewTakeoverScanner(30),
@@ -636,18 +638,22 @@ func (h *ScanHandler) GetPOCList(c *gin.Context) {
 
 // ===================== Content Scanning =====================
 
-// DirScan performs directory brute force scan
+// DirScan performs directory brute force scan using Spray
 // POST /api/scan/dir
 func (h *ScanHandler) DirScan(c *gin.Context) {
 	var req struct {
 		Target     string   `json:"target" binding:"required"`
 		Wordlist   []string `json:"wordlist"`
-		Extensions []string `json:"extensions"`
 		Timeout    int      `json:"timeout"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	if h.sprayScanner == nil || !h.sprayScanner.IsAvailable() {
+		utils.Error(c, 500, "Spray 扫描器不可用")
 		return
 	}
 
@@ -659,11 +665,23 @@ func (h *ScanHandler) DirScan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	result := h.contentScanner.DirBrute(ctx, req.Target, req.Wordlist, req.Extensions)
+	var result *webscan.SprayResult
+	var err error
+	
+	if len(req.Wordlist) > 0 {
+		result, err = h.sprayScanner.ScanWithWordlist(ctx, req.Target, req.Wordlist)
+	} else {
+		result, err = h.sprayScanner.Scan(ctx, req.Target)
+	}
+	
+	if err != nil {
+		utils.Error(c, 500, "扫描失败: "+err.Error())
+		return
+	}
 	utils.Success(c, result)
 }
 
-// QuickDirScan performs a quick directory scan
+// QuickDirScan performs a quick directory scan using Spray
 // POST /api/scan/dir/quick
 func (h *ScanHandler) QuickDirScan(c *gin.Context) {
 	var req struct {
@@ -676,6 +694,11 @@ func (h *ScanHandler) QuickDirScan(c *gin.Context) {
 		return
 	}
 
+	if h.sprayScanner == nil || !h.sprayScanner.IsAvailable() {
+		utils.Error(c, 500, "Spray 扫描器不可用")
+		return
+	}
+
 	timeout := 3 * time.Minute
 	if req.Timeout > 0 {
 		timeout = time.Duration(req.Timeout) * time.Second
@@ -684,7 +707,11 @@ func (h *ScanHandler) QuickDirScan(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	result := h.contentScanner.QuickDirScan(ctx, req.Target)
+	result, err := h.sprayScanner.Scan(ctx, req.Target)
+	if err != nil {
+		utils.Error(c, 500, "扫描失败: "+err.Error())
+		return
+	}
 	utils.Success(c, result)
 }
 

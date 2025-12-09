@@ -110,7 +110,21 @@ func SetDictBasePath(path string) {
 // GetDictBasePath returns the base path for dictionary files
 func GetDictBasePath() string {
 	if dictBasePath == "" {
-		// Default to config/dicts relative to current directory
+		// 尝试多个可能的路径
+		possiblePaths := []string{
+			"config/dicts",         // 当前目录
+			"../config/dicts",      // 上级目录 (测试环境)
+			"backend/config/dicts", // 项目根目录
+		}
+		
+		for _, p := range possiblePaths {
+			if _, err := os.Stat(p); err == nil {
+				dictBasePath = p
+				return dictBasePath
+			}
+		}
+		
+		// 默认值
 		dictBasePath = "config/dicts"
 	}
 	return dictBasePath

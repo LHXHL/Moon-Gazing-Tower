@@ -26,8 +26,8 @@ func (p *ScanPipeline) parseTargets() []string {
 
 		// 处理 CIDR (如 192.168.1.0/24)
 		if strings.Contains(target, "/") {
-			// TODO: 展开 CIDR
-			result = append(result, target)
+			expanded := expandCIDR(target)
+			result = append(result, expanded...)
 		} else {
 			result = append(result, target)
 		}
@@ -35,6 +35,48 @@ func (p *ScanPipeline) parseTargets() []string {
 
 	log.Printf("[Pipeline] Parsed %d targets", len(result))
 	return result
+}
+
+// expandCIDR 展开 CIDR 为单个 IP 地址列表
+func expandCIDR(cidr string) []string {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		// 如果解析失败，返回原始字符串
+		log.Printf("[Pipeline] Failed to parse CIDR %s: %v", cidr, err)
+		return []string{cidr}
+	}
+
+	// 计算 CIDR 中的 IP 数量
+	ones, bits := ipNet.Mask.Size()
+	numIPs := 1 << (bits - ones)
+
+	// 限制扩展数量，防止 /8 这样的大网段耗尽内存
+	const maxCIDRExpand = 65536 // 最大扩展 /16 网段
+	if numIPs > maxCIDRExpand {
+		log.Printf("[Pipeline] CIDR %s too large (%d IPs), keeping as-is", cidr, numIPs)
+		return []string{cidr}
+	}
+
+	result := make([]string, 0, numIPs)
+	ip := ipNet.IP
+
+	for i := 0; i < numIPs; i++ {
+		result = append(result, ip.String())
+		incrementIP(ip)
+	}
+
+	log.Printf("[Pipeline] Expanded CIDR %s to %d IPs", cidr, len(result))
+	return result
+}
+
+// incrementIP 递增 IP 地址
+func incrementIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
 }
 
 // calculateTotalSteps 计算总步骤数

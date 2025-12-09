@@ -77,12 +77,9 @@ func (s *UserService) Login(username, password string) (string, *models.User, er
 	var user models.User
 	err := collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
-		log.Printf("[Login] User not found: %s, error: %v", username, err)
+		log.Printf("[Login] User not found: %s", username)
 		return "", nil, errors.New("用户名或密码错误")
 	}
-	
-	log.Printf("[Login] Found user: %s, password hash length: %d", user.Username, len(user.Password))
-	log.Printf("[Login] Stored hash: %s", user.Password)
 	
 	if !utils.CheckPassword(password, user.Password) {
 		log.Printf("[Login] Password check failed for user: %s", username)
@@ -297,15 +294,7 @@ func (s *UserService) InitAdmin() error {
 			log.Printf("[InitAdmin] Hash error: %v", hashErr)
 			return hashErr
 		}
-		log.Printf("[InitAdmin] Creating admin with password: %s", password)
-		log.Printf("[InitAdmin] Generated hash: %s", hashedPassword)
-		
-		// 验证哈希
-		if !utils.CheckPassword(password, hashedPassword) {
-			log.Printf("[InitAdmin] WARNING: Hash verification failed immediately after generation!")
-		} else {
-			log.Printf("[InitAdmin] Hash verification OK")
-		}
+		log.Printf("[InitAdmin] Creating admin user")
 		
 		adminUser := &models.User{
 			ID:        primitive.NewObjectID(),
@@ -327,4 +316,42 @@ func (s *UserService) InitAdmin() error {
 	}
 	
 	return nil
+}
+
+// BlacklistToken adds a token to the blacklist in Redis
+func (s *UserService) BlacklistToken(token string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Parse token to get expiration time
+	claims, err := utils.ParseToken(token)
+	if err != nil {
+		// Token is invalid, no need to blacklist
+		return nil
+	}
+
+	// Calculate TTL based on token expiration
+	ttl := time.Until(claims.ExpiresAt.Time)
+	if ttl <= 0 {
+		// Token already expired, no need to blacklist
+		return nil
+	}
+
+	// Store token in Redis blacklist with TTL
+	key := "token:blacklist:" + token
+	return database.GetRedis().Set(ctx, key, "1", ttl).Err()
+}
+
+// IsTokenBlacklisted checks if a token is in the blacklist
+func (s *UserService) IsTokenBlacklisted(token string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	key := "token:blacklist:" + token
+	result, err := database.GetRedis().Exists(ctx, key).Result()
+	if err != nil {
+		// If Redis error, assume token is not blacklisted for availability
+		return false
+	}
+	return result > 0
 }

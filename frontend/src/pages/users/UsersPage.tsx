@@ -79,6 +79,9 @@ export default function UsersPage() {
       toast({ title: '删除成功' })
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
+    },
   })
 
   const resetPasswordMutation = useMutation({

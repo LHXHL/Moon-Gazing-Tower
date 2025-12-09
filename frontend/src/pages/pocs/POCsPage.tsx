@@ -79,6 +79,9 @@ export default function POCsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pocs'] })
     },
+    onError: () => {
+      toast({ title: '切换状态失败', variant: 'destructive' })
+    },
   })
 
   const createMutation = useMutation({
@@ -110,6 +113,9 @@ export default function POCsPage() {
     onSuccess: () => {
       toast({ title: '删除成功' })
       queryClient.invalidateQueries({ queryKey: ['pocs'] })
+    },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
     },
   })
 

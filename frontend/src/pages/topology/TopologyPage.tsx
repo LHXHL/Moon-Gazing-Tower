@@ -150,41 +150,56 @@ export default function TopologyPage() {
 
     // Mouse drag for rotation (Simple orbit implementation)
     let isDragging = false
+    let isRightDragging = false // 右键拖动用于平移
     let previousMousePosition = { x: 0, y: 0 }
     
     const onMouseDown = (e: MouseEvent) => {
-      isDragging = true
+      if (e.button === 0) { // 左键 - 旋转
+        isDragging = true
+      } else if (e.button === 2) { // 右键 - 平移
+        isRightDragging = true
+      }
       previousMousePosition = { x: e.clientX, y: e.clientY }
+      e.preventDefault()
     }
     
     const onMouseUp = () => {
       isDragging = false
+      isRightDragging = false
+    }
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault() // 禁用右键菜单
     }
 
     const onMouseDrag = (e: MouseEvent) => {
-      if (!isDragging || !sceneRef.current) return
+      if (!sceneRef.current || (!isDragging && !isRightDragging)) return
       
       const deltaMove = {
         x: e.clientX - previousMousePosition.x,
         y: e.clientY - previousMousePosition.y
       }
-      
-      // Rotate scene/camera group or just orbit camera
-      // For simplicity, let's rotate the entire graph group if we had one, 
-      // or move camera. Let's move camera in a sphere.
-      
-      const radius = camera.position.length()
-      const theta = Math.atan2(camera.position.x, camera.position.z)
-      const phi = Math.acos(camera.position.y / radius)
-      
-      const targetTheta = theta - deltaMove.x * 0.005
-      const targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - deltaMove.y * 0.005))
-      
-      camera.position.x = radius * Math.sin(targetPhi) * Math.sin(targetTheta)
-      camera.position.y = radius * Math.cos(targetPhi)
-      camera.position.z = radius * Math.sin(targetPhi) * Math.cos(targetTheta)
-      
-      camera.lookAt(0, 0, 0)
+
+      if (isDragging) {
+        // 左键拖动 - 旋转视图
+        const radius = camera.position.length()
+        const theta = Math.atan2(camera.position.x, camera.position.z)
+        const phi = Math.acos(camera.position.y / radius)
+        
+        const targetTheta = theta - deltaMove.x * 0.005
+        const targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - deltaMove.y * 0.005))
+        
+        camera.position.x = radius * Math.sin(targetPhi) * Math.sin(targetTheta)
+        camera.position.y = radius * Math.cos(targetPhi)
+        camera.position.z = radius * Math.sin(targetPhi) * Math.cos(targetTheta)
+        
+        camera.lookAt(0, 0, 0)
+      } else if (isRightDragging) {
+        // 右键拖动 - 平移视图
+        const panSpeed = 0.5
+        camera.position.x -= deltaMove.x * panSpeed
+        camera.position.y += deltaMove.y * panSpeed
+      }
       
       previousMousePosition = { x: e.clientX, y: e.clientY }
     }
@@ -202,12 +217,14 @@ export default function TopologyPage() {
       }
     }
 
-    containerRef.current.addEventListener('mousemove', onMouseMove)
-    containerRef.current.addEventListener('click', onClick)
-    containerRef.current.addEventListener('mousedown', onMouseDown)
+    const container = containerRef.current
+    container.addEventListener('mousemove', onMouseMove)
+    container.addEventListener('click', onClick)
+    container.addEventListener('mousedown', onMouseDown)
+    container.addEventListener('contextmenu', onContextMenu)
+    container.addEventListener('wheel', onWheel, { passive: false })
     window.addEventListener('mouseup', onMouseUp)
     window.addEventListener('mousemove', onMouseDrag)
-    containerRef.current.addEventListener('wheel', onWheel, { passive: false })
 
     // Animation Loop
     const animate = () => {
@@ -265,14 +282,15 @@ export default function TopologyPage() {
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
       if (rendererRef.current) rendererRef.current.dispose()
-      if (containerRef.current) {
-        containerRef.current.removeEventListener('mousemove', onMouseMove)
-        containerRef.current.removeEventListener('click', onClick)
-        containerRef.current.removeEventListener('mousedown', onMouseDown)
-        containerRef.current.removeEventListener('wheel', onWheel)
+      if (container) {
+        container.removeEventListener('mousemove', onMouseMove)
+        container.removeEventListener('click', onClick)
+        container.removeEventListener('mousedown', onMouseDown)
+        container.removeEventListener('contextmenu', onContextMenu)
+        container.removeEventListener('wheel', onWheel)
         // Remove children
-        while(containerRef.current.firstChild) {
-          containerRef.current.removeChild(containerRef.current.firstChild)
+        while(container.firstChild) {
+          container.removeChild(container.firstChild)
         }
       }
       window.removeEventListener('mouseup', onMouseUp)
@@ -687,9 +705,9 @@ export default function TopologyPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] w-full relative bg-black overflow-hidden rounded-lg border border-slate-800 shadow-2xl">
+    <div className="fixed inset-0 top-16 bg-black overflow-hidden">
       {/* 3D Container */}
-      <div ref={containerRef} className="w-full h-full cursor-move" />
+      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* Loading Overlay */}
       {(isFetching || isLoadingGraph) && (
@@ -825,10 +843,11 @@ export default function TopologyPage() {
       </div>
 
       {/* Instructions */}
-      <div className="absolute bottom-6 left-6 z-10 text-xs text-slate-500 space-y-1 font-mono pointer-events-none select-none">
-        <p>[左键拖拽] 旋转视图 ■</p>
-        <p>[滚轮] 缩放视图</p>
-        <p>[点击节点] 查看详情</p>
+      <div className="absolute bottom-6 left-6 z-10 text-xs text-slate-500 space-y-1 font-mono pointer-events-none select-none bg-slate-900/60 backdrop-blur-sm p-3 rounded-lg border border-slate-800">
+        <p className="flex items-center gap-2"><span className="text-cyan-400">●</span> [左键拖拽] 旋转视图</p>
+        <p className="flex items-center gap-2"><span className="text-green-400">●</span> [右键拖拽] 平移视图</p>
+        <p className="flex items-center gap-2"><span className="text-yellow-400">●</span> [滚轮] 缩放视图</p>
+        <p className="flex items-center gap-2"><span className="text-purple-400">●</span> [点击节点] 查看详情</p>
       </div>
     </div>
   )
